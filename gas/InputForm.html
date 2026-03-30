@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,sans-serif;padding:6px;max-width:400px;margin:auto;background:#f0f0f0;user-select:none;-webkit-user-select:none;font-size:12px}
+  .sb{background:#1a1a2e;color:#fff;border-radius:10px;padding:8px;text-align:center;margin-bottom:6px}
+  .sb .mi{font-size:9px;color:#888;margin-top:2px}
+  .sb .sl{font-size:10px;color:#aaa}
+  .sb .sc{font-size:30px;font-weight:bold;letter-spacing:3px;margin:1px 0}
+  .sb .tm{display:flex;justify-content:space-around;font-size:10px;color:#ccc}
+  .sb .si{display:flex;justify-content:space-around;font-size:9px;color:#aaa;margin-top:4px}
+  .sb .si span{background:rgba(255,255,255,.1);padding:1px 6px;border-radius:3px}
+  .sec{margin-bottom:6px}
+  .st{font-size:10px;color:#888;margin-bottom:3px;font-weight:bold}
+  .bg{display:grid;gap:3px}
+  .c2{grid-template-columns:repeat(2,1fr)}.c3{grid-template-columns:repeat(3,1fr)}.c4{grid-template-columns:repeat(4,1fr)}
+  .b{padding:8px 4px;font-size:11px;border:2px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;text-align:center}
+  .b:active{transform:scale(.95)}.b.s{border-color:#4CAF50;background:#E8F5E9;font-weight:bold}
+  .bp{padding:6px 4px;font-size:10px;border:2px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;text-align:center;line-height:1.2}
+  .bp:active{transform:scale(.95)}
+  .bp.s.p1{background:#2196F3;color:#fff;border-color:#2196F3}
+  .bp.s.p2{background:#03A9F4;color:#fff;border-color:#03A9F4}
+  .bp.s.p4{background:#f44336;color:#fff;border-color:#f44336}
+  .br{width:100%;padding:10px;font-size:16px;font-weight:bold;background:#4CAF50;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-top:4px}
+  .br:disabled{background:#ccc}
+  .ct{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+  .cb{padding:5px 8px;font-size:10px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer}
+  .co{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;border:2px solid #333;border-radius:6px;overflow:hidden}
+  .cl{grid-column:1/-1;text-align:center;font-size:9px;color:#888;padding:1px;background:#fafafa}
+  .nl{grid-column:1/-1;height:3px;background:#333}
+  .zb{padding:6px 2px;font-size:9px;background:#FFF8E1;border:1px solid #e0e0e0;cursor:pointer;text-align:center}
+  .zb.sf{background:#2196F3;color:#fff}.zb.st2{background:#f44336;color:#fff}
+  .zl{display:flex;gap:8px;justify-content:center;font-size:9px;margin-top:2px;color:#666}
+  .ld{display:inline-block;width:8px;height:8px;border-radius:2px;vertical-align:middle;margin-right:2px}
+  .ni{width:100%;padding:6px;font-size:12px;border:2px solid #ddd;border-radius:6px;margin-top:3px}
+  .si2{width:100%;padding:8px;font-size:13px;border:2px solid #ddd;border-radius:6px;background:#fff}
+  .si2:focus{outline:none;border-color:#4CAF50}
+  .lg{margin-top:6px;padding:6px;background:#fff;border-radius:6px;font-size:9px;color:#666;max-height:80px;overflow-y:auto}
+  .fb{text-align:center;padding:6px;border-radius:6px;margin-bottom:4px;font-weight:bold;font-size:11px}
+  .fb.ok{background:#E8F5E9;color:#2E7D32}.fb.hd{display:none}
+  .ga.s{background:#2196F3;color:#fff;border-color:#2196F3}
+  .gb.s{background:#FF9800;color:#fff;border-color:#FF9800}
+  .gc.s{background:#f44336;color:#fff;border-color:#f44336}
+  .gd.s{background:#880E4F;color:#fff;border-color:#880E4F}
+  .ss{background:#fff;border-radius:10px;padding:14px;margin-top:10px}
+  .ss h2{text-align:center;margin-bottom:14px;font-size:16px}
+  .sf2{margin-bottom:12px}
+  .sf2 label{display:block;font-size:12px;font-weight:bold;color:#555;margin-bottom:4px}
+  .sf2 input{width:100%;padding:8px;font-size:14px;border:2px solid #ddd;border-radius:6px}
+  .sf2 input:focus{outline:none;border-color:#4CAF50}
+  .hc{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .hch{padding:4px 10px;font-size:11px;background:#E3F2FD;border:1px solid #90CAF9;border-radius:14px;cursor:pointer}
+  .sbg{display:grid;gap:6px;grid-template-columns:repeat(2,1fr)}
+  .sbg.c6{grid-template-columns:repeat(6,1fr)}
+  .sbt{padding:10px;font-size:13px;border:2px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;text-align:center}
+  .sbt.s{border-color:#4CAF50;background:#E8F5E9;font-weight:bold}
+  .bst{width:100%;padding:12px;font-size:16px;font-weight:bold;background:#4CAF50;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-top:8px}
+  .recv-bar{background:#FFF3E0;border:2px solid #FF9800;border-radius:6px;padding:4px 6px;margin-bottom:4px}
+  .recv-bar .st{color:#E65100;margin-bottom:2px;font-size:9px}
+  .c6{grid-template-columns:repeat(6,1fr)}
+  .c7{grid-template-columns:repeat(7,1fr)}
+  .tgl{margin-bottom:4px}
+  .tgl-header{
+    font-size:11px;font-weight:bold;color:#555;
+    background:#e8e8e8;padding:6px 8px;border-radius:6px;
+    cursor:pointer;
+  }
+  .tgl-header.open{background:#d0d0d0}
+  .tgl-body{padding:4px 0}
+</style>
+</head>
+<body>
+
+<!-- 初期設定 -->
+<div id="setupScreen">
+  <div class="ss">
+    <h2>🏐 試合情報</h2>
+    <div class="sf2"><label>📅 日付</label><input type="date" id="matchDate"></div>
+    <div class="sf2">
+      <label>🏟 相手チーム名</label>
+      <input type="text" id="opponentInput" placeholder="チーム名を入力">
+      <div class="hc" id="opponentHistory"></div>
+    </div>
+    <div class="sf2">
+      <label>🏐 最初のサーブ権</label>
+      <div class="sbg">
+        <div class="sbt" onclick="selSetup('serve','自チーム',this)">自チーム</div>
+        <div class="sbt" onclick="selSetup('serve','相手',this)">相手</div>
+      </div>
+    </div>
+    <div class="sf2">
+      <label>🔄 最初のローテーション</label>
+      <div class="sbg c6">
+        <div class="sbt" onclick="selSetup('rotation',1,this)">1</div>
+        <div class="sbt" onclick="selSetup('rotation',2,this)">2</div>
+        <div class="sbt" onclick="selSetup('rotation',3,this)">3</div>
+        <div class="sbt" onclick="selSetup('rotation',4,this)">4</div>
+        <div class="sbt" onclick="selSetup('rotation',5,this)">5</div>
+        <div class="sbt" onclick="selSetup('rotation',6,this)">6</div>
+      </div>
+    </div>
+    <button class="bst" onclick="startMatch()">試合開始 ▶</button>
+  </div>
+</div>
+
+<!-- メイン画面 -->
+<div id="mainScreen" style="display:none">
+  <div class="fb hd" id="feedback"></div>
+
+  <!-- スコアボード（コンパクト） -->
+  <div class="sb">
+    <div class="mi"><span id="dispDate"></span> vs <span id="dispOpponent"></span></div>
+    <div class="sc"><span style="font-size:10px;color:#aaa">SET<span id="setNum">1</span></span> <span id="scoreUs">0</span>-<span id="scoreThem">0</span></div>
+    <div class="tm"><span>自チーム</span><span id="oppLabel">相手</span></div>
+    <div class="si">
+      <span>S:<b id="dispServe">-</b></span>
+      <span>R:<b id="dispRotation">-</b></span>
+    </div>
+  </div>
+
+  <!-- サーブキャッチ（小さく） -->
+  <div class="recv-bar" id="secRecvBar" style="display:none">
+    <div class="bg c6" id="grpReceiver" style="margin-bottom:3px"></div>
+    <div class="bg c4" id="grpRecv">
+      <div class="b ga" onclick="selRecv(this,'A')">A</div>
+      <div class="b gb" onclick="selRecv(this,'B')">B</div>
+      <div class="b gc" onclick="selRecv(this,'C')">C</div>
+      <div class="b gd" onclick="selRecv(this,'D')">D</div>
+    </div>
+    <button class="br" id="btnAce" onclick="recordAce()" style="display:none;margin-top:3px;background:#f44336;padding:8px;font-size:13px">🏐 サービスエース記録</button>
+  </div>
+
+  <!-- 何が起きた？（小さく3項目） -->
+  <div class="sec">
+    <div class="bg c3">
+      <div class="bp" onclick="selPattern(this,1)">🔵得点</div>
+      <div class="bp" onclick="selPattern(this,2)">🔵相手ミス</div>
+      <div class="bp" onclick="selPattern(this,4)">🔴自ミス</div>
+    </div>
+  </div>
+
+  <!-- 選手（先に表示） -->
+  <div class="sec" id="secPlayer" style="display:none">
+    <div class="st" id="secPlayerLabel">選手</div>
+    <div class="bg c6" id="grpPlayer"></div>
+  </div>
+
+  <!-- プレー（後に表示） -->
+  <div class="sec" id="secPlay" style="display:none">
+    <div class="st">プレー</div>
+    <div class="bg c4" id="grpPlay">
+      <div class="b" onclick="sel('play',this,'サーブ')">サーブ</div>
+      <div class="b" onclick="sel('play',this,'スパイク')">スパイク</div>
+      <div class="b" onclick="sel('play',this,'フェイント')">フェイント</div>
+      <div class="b" onclick="sel('play',this,'プッシュ')">プッシュ</div>
+      <div class="b" onclick="sel('play',this,'ブロック')">ブロック</div>
+      <div class="b" onclick="sel('play',this,'トス')">トス</div>
+      <div class="b" onclick="sel('play',this,'ディグ')">ディグ</div>
+      <div class="b" onclick="sel('play',this,'フリーボール')">フリーボール</div>
+    </div>
+  </div>
+
+  <!-- 結果詳細（ミス時のみ） -->
+  <div class="sec" id="secDetail" style="display:none">
+    <div class="st">ミスの種類</div>
+    <select class="si2" id="selDetail" onchange="state.detail=this.value;checkReady()">
+      <option value="">-- 選択 --</option>
+    </select>
+  </div>
+
+  <!-- トグルセクション -->
+  <div class="sec" id="secToggles" style="display:none">
+    <div class="tgl" id="tglAttack" style="display:none">
+      <div class="tgl-header" onclick="toggleSec('tglAttackBody')">▶ 攻撃テンポ</div>
+      <div class="tgl-body" id="tglAttackBody" style="display:none">
+        <select class="si2" id="selAttack" onchange="state.attack=this.value;checkReady()">
+          <option value="">-- 選択 --</option>
+        </select>
+      </div>
+    </div>
+    <div class="tgl" id="tglBlocker" style="display:none">
+      <div class="tgl-header" onclick="toggleSec('tglBlockerBody')">▶ ブロック枚数</div>
+      <div class="tgl-body" id="tglBlockerBody" style="display:none">
+        <div class="bg c4" id="grpBlocker">
+          <div class="b" onclick="sel('blocker',this,'0')">0枚</div>
+          <div class="b" onclick="sel('blocker',this,'1')">1枚</div>
+          <div class="b" onclick="sel('blocker',this,'2')">2枚</div>
+          <div class="b" onclick="sel('blocker',this,'3')">3枚</div>
+        </div>
+      </div>
+    </div>
+    <div class="tgl" id="tglZone">
+      <div class="tgl-header" id="zoneTitle" onclick="toggleSec('tglZoneBody')">▶ ゾーン</div>
+      <div class="tgl-body" id="tglZoneBody" style="display:none">
+        <div class="zl">
+          <span><span class="ld" style="background:#2196F3"></span>FROM</span>
+          <span><span class="ld" style="background:#f44336"></span>TO</span>
+        </div>
+        <div class="co">
+          <div class="cl">相手コート</div>
+          <div class="zb" onclick="selZone(this,'相手左奥')">左奥</div>
+          <div class="zb" onclick="selZone(this,'相手中奥')">中奥</div>
+          <div class="zb" onclick="selZone(this,'相手右奥')">右奥</div>
+          <div class="zb" onclick="selZone(this,'相手左前')">左前</div>
+          <div class="zb" onclick="selZone(this,'相手中前')">中前</div>
+          <div class="zb" onclick="selZone(this,'相手右前')">右前</div>
+          <div class="nl"></div>
+          <div class="zb" onclick="selZone(this,'自左前')">左前</div>
+          <div class="zb" onclick="selZone(this,'自中前')">中前</div>
+          <div class="zb" onclick="selZone(this,'自右前')">右前</div>
+          <div class="zb" onclick="selZone(this,'自左奥')">左奥</div>
+          <div class="zb" onclick="selZone(this,'自中奥')">中奥</div>
+          <div class="zb" onclick="selZone(this,'自右奥')">右奥</div>
+          <div class="cl">自コート</div>
+        </div>
+        <div style="text-align:center;margin-top:3px"><button class="cb" onclick="clearZone()">クリア</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- メモ -->
+  <div class="sec" id="secNote" style="display:none">
+    <div class="st">メモ</div>
+    <input type="text" class="ni" id="noteInput" placeholder="クロス、ネットイン等">
+  </div>
+
+  <button class="br" id="btnRecord" onclick="record()" disabled>📝 記録</button>
+
+  <div class="ct">
+    <button class="cb" onclick="undo()">↩️取消</button>
+    <button class="cb" onclick="nextSet()">次SET▶</button>
+    <button class="cb" onclick="changeMatch()">📋試合変更</button>
+    <button class="cb" onclick="resetAll()">🔄リセット</button>
+  </div>
+
+  <div class="lg" id="log"></div>
+</div>
+
+<script>
+// ========== 状態管理 ==========
+var matchDate='',opponent='',pattern=0;
+var state={play:'',player:'',detail:'',attack:'',blocker:'',receive:'',receiver:'',zoneFrom:'',zoneTo:''};
+var zoneStep='from',scoreUs=0,scoreThem=0,currentSet=1;
+var serveTeam='',rotation=1,setupState={serve:'',rotation:0};
+var recording=false;
+var recordTimeout=null;
+
+function isAtk(p){return['スパイク','フェイント','プッシュ'].indexOf(p)>=0}
+
+function toggleSec(id){
+  var el=document.getElementById(id);
+  var header=el.previousElementSibling;
+  if(el.style.display==='none'){
+    el.style.display='';
+    header.textContent=header.textContent.replace('▶','▼');
+    header.classList.add('open');
+  }else{
+    el.style.display='none';
+    header.textContent=header.textContent.replace('▼','▶');
+    header.classList.remove('open');
+  }
+}
+
+// ========== ローカル保存・復元 ==========
+function saveLocal(){
+  try{
+    var d={
+      matchDate:matchDate,opponent:opponent,
+      currentSet:currentSet,scoreUs:scoreUs,scoreThem:scoreThem,
+      serveTeam:serveTeam,rotation:rotation,
+      setupServe:setupState.serve,setupRotation:setupState.rotation,
+      screen:document.getElementById('mainScreen').style.display===''?'main':'setup',
+      ts:Date.now()
+    };
+    localStorage.setItem('vstat',JSON.stringify(d));
+  }catch(e){}
+}
+
+function loadLocal(){
+  try{
+    var s=localStorage.getItem('vstat');
+    if(!s)return null;
+    var d=JSON.parse(s);
+    // 24時間以上前のデータは無視
+    if(Date.now()-d.ts>86400000)return null;
+    return d;
+  }catch(e){return null}
+}
+
+function clearLocal(){
+  try{localStorage.removeItem('vstat')}catch(e){}
+}
+
+// ========== 起動時 ==========
+window.onload=function(){
+  var t=new Date();
+  var y=t.getFullYear(),m=String(t.getMonth()+1).padStart(2,'0'),d=String(t.getDate()).padStart(2,'0');
+  document.getElementById('matchDate').value=y+'-'+m+'-'+d;
+
+  // 設定読み込み
+  google.script.run.withSuccessHandler(function(cfg){
+    var pc=document.getElementById('grpPlayer');pc.innerHTML='';
+    var rc=document.getElementById('grpReceiver');rc.innerHTML='';
+    if(cfg.players&&cfg.players.length>0){
+      cfg.players.forEach(function(name){
+        var b=document.createElement('div');b.className='b';b.textContent=name;
+        b.onclick=function(){sel('player',b,name)};pc.appendChild(b);
+        var rb=document.createElement('div');rb.className='b';rb.textContent=name;
+        rb.onclick=function(){selReceiver(rb,name)};rc.appendChild(rb);
+      });
+    }
+    var as=document.getElementById('selAttack');
+    as.innerHTML='<option value="">-- 選択 --</option>';
+    if(cfg.attackTypes&&cfg.attackTypes.length>0){
+      cfg.attackTypes.forEach(function(t){var o=document.createElement('option');o.value=t;o.textContent=t;as.appendChild(o)});
+    }
+    var ds=document.getElementById('selDetail');
+    ds.innerHTML='<option value="">-- 選択 --</option>';
+    if(cfg.resultDetails&&cfg.resultDetails.length>0){
+      cfg.resultDetails.forEach(function(t){var o=document.createElement('option');o.value=t;o.textContent=t;ds.appendChild(o)});
+    }
+  }).getSettings();
+
+  // 相手チーム履歴
+  google.script.run.withSuccessHandler(function(h){
+    var c=document.getElementById('opponentHistory');
+    if(h&&h.length>0){h.forEach(function(n){
+      var ch=document.createElement('div');ch.className='hch';ch.textContent=n;
+      ch.onclick=function(){document.getElementById('opponentInput').value=n};c.appendChild(ch);
+    })}
+  }).getOpponentHistory();
+
+  // 復元: まずローカル → なければスプシ
+  var local=loadLocal();
+  if(local&&local.screen==='main'&&local.matchDate){
+    restoreFromLocal(local);
+  }else{
+    restoreFromSheet();
+  }
+
+  function restoreFromLocal(local){
+    var msg='前回の続きを再開しますか？\n\n';
+    msg+='相手: '+local.opponent+'\n';
+    msg+='SET: '+local.currentSet+'\n';
+    msg+='スコア: '+local.scoreUs+' - '+local.scoreThem+'\n';
+    msg+='サーブ権: '+local.serveTeam+'\n';
+    msg+='ローテ: '+local.rotation;
+    if(confirm(msg)){
+      matchDate=local.matchDate;
+      opponent=local.opponent;
+      currentSet=local.currentSet;
+      scoreUs=local.scoreUs;
+      scoreThem=local.scoreThem;
+      serveTeam=local.serveTeam;
+      rotation=local.rotation;
+      setupState.serve=local.setupServe||'自チーム';
+      setupState.rotation=local.setupRotation||1;
+      showMain();
+    }else{
+      // ローカル拒否 → スプシから試す
+      clearLocal();
+      restoreFromSheet();
+    }
+  }
+
+  function restoreFromSheet(){
+    google.script.run.withSuccessHandler(function(s){
+      if(!s||!s.found)return;
+
+      var lastDate=s.date.toString().replace(/[\/\-]/g,'');
+      // 数値で来る場合の対策
+      if(!isNaN(s.date)) lastDate=s.date.toString();
+
+      var msg='生データから復元しますか？\n\n';
+      msg+='日付: '+lastDate+'\n';
+      msg+='相手: '+s.opponent+'\n';
+      msg+='SET: '+s.set+'\n';
+      msg+='スコア: '+s.scoreUs+' - '+s.scoreThem+'\n';
+      msg+='サーブ権: '+s.serveTeam+'\n';
+      msg+='ローテ: '+s.rotation+'\n';
+      msg+='最後の得点: '+s.pointTeam;
+
+      if(confirm(msg)){
+        matchDate=lastDate;
+        opponent=s.opponent;
+        currentSet=parseInt(s.set)||1;
+        scoreUs=parseInt(s.scoreUs)||0;
+        scoreThem=parseInt(s.scoreThem)||0;
+
+        // 次のラリー用にサーブ権・ローテーション再計算
+        recalcAfterLastPoint(s);
+
+        showMain();
+      }
+    }).getLastState();
+  }
+};
+
+function recalcAfterLastPoint(s){
+  var lastServe=s.serveTeam.toString();
+  var lastRot=parseInt(s.rotation)||1;
+  var lastPT=(s.pointTeam||'').toString();
+
+  if(lastPT==='自チーム'){
+    if(lastServe!=='自チーム'){
+      // サイドアウト: 自チームがサーブ権獲得、ローテ進む
+      serveTeam='自チーム';
+      rotation=(lastRot%6)+1;
+    }else{
+      // ブレイク: そのまま
+      serveTeam='自チーム';
+      rotation=lastRot;
+    }
+  }else if(lastPT&&lastPT!==''){
+    if(lastServe==='自チーム'){
+      // サイドアウト: 相手がサーブ権獲得
+      serveTeam='相手';
+      rotation=lastRot;
+    }else{
+      // ブレイク: そのまま
+      serveTeam='相手';
+      rotation=lastRot;
+    }
+  }else{
+    serveTeam=lastServe||'自チーム';
+    rotation=lastRot;
+  }
+}
+
+// ========== 初期設定 ==========
+function selSetup(type,val,el){
+  el.parentNode.querySelectorAll('.sbt').forEach(function(b){b.classList.remove('s')});
+  el.classList.add('s');
+  if(type==='serve')setupState.serve=val;else setupState.rotation=val;
+}
+
+function startMatch(){
+  var di=document.getElementById('matchDate').value;
+  var oi=document.getElementById('opponentInput').value.trim();
+  if(!di){alert('日付を入力');return}
+  if(!oi){alert('相手チーム名を入力');return}
+  if(!setupState.serve){alert('サーブ権を選択');return}
+  if(!setupState.rotation){alert('ローテーションを選択');return}
+  matchDate=di.replace(/-/g,'');opponent=oi;
+  currentSet=1;scoreUs=0;scoreThem=0;
+  serveTeam=setupState.serve;rotation=setupState.rotation;
+  showMain();
+}
+
+function showMain(){
+  document.getElementById('setupScreen').style.display='none';
+  document.getElementById('mainScreen').style.display='';
+  var dd=matchDate;
+  document.getElementById('dispDate').textContent=dd.substring(0,4)+'/'+dd.substring(4,6)+'/'+dd.substring(6,8);
+  document.getElementById('dispOpponent').textContent=opponent;
+  document.getElementById('oppLabel').textContent=opponent;
+  updateDisp();showRecvBar();
+  saveLocal();
+}
+
+function changeMatch(){
+  if(confirm('試合情報を変更しますか？')){
+    document.getElementById('setupScreen').style.display='';
+    document.getElementById('mainScreen').style.display='none';
+    clearLocal();
+  }
+}
+
+// ========== 表示更新 ==========
+function updateDisp(){
+  document.getElementById('setNum').textContent=currentSet;
+  document.getElementById('scoreUs').textContent=scoreUs;
+  document.getElementById('scoreThem').textContent=scoreThem;
+  document.getElementById('dispServe').textContent=serveTeam==='自チーム'?'自チーム':opponent;
+  document.getElementById('dispRotation').textContent=rotation;
+}
+
+function showRecvBar(){
+  document.getElementById('secRecvBar').style.display=(serveTeam!=='自チーム')?'':'none';
+  state.receive='';state.receiver='';
+  document.querySelectorAll('#grpRecv .b').forEach(function(b){b.classList.remove('s')});
+  document.querySelectorAll('#grpReceiver .b').forEach(function(b){b.classList.remove('s')});
+  document.getElementById('btnAce').style.display='none';
+  document.getElementById('btnRecord').style.display='';
+}
+
+function selRecv(el,val){
+  document.querySelectorAll('#grpRecv .b').forEach(function(b){b.classList.remove('s')});
+  el.classList.add('s');state.receive=val;
+  if(val==='D'){
+    document.getElementById('btnAce').style.display='';
+    document.getElementById('secPlay').style.display='none';
+    document.getElementById('secPlayer').style.display='none';
+    document.getElementById('secDetail').style.display='none';
+    document.getElementById('secToggles').style.display='none';  // ← 追加
+    document.getElementById('secNote').style.display='none';     // ← 追加
+    document.getElementById('btnRecord').style.display='none';
+    pattern=0;
+    document.querySelectorAll('.bp').forEach(function(b){b.classList.remove('s')});
+  }else{
+    document.getElementById('btnAce').style.display='none';
+    document.getElementById('btnRecord').style.display='';
+  }
+}
+
+function selReceiver(el,val){
+  document.querySelectorAll('#grpReceiver .b').forEach(function(b){b.classList.remove('s')});
+  el.classList.add('s');state.receiver=val;
+}
+
+// ========== サービスエース ==========
+function recordAce(){
+  if(recording)return;recording=true;
+  document.getElementById('btnAce').disabled=true;
+  var recServe=serveTeam,recRot=rotation;
+  scoreThem++;
+
+  var data={
+    date:matchDate,opponent:opponent,set:currentSet,
+    scoreUs:scoreUs,scoreThem:scoreThem,
+    pointTeam:opponent,
+    serveTeam:recServe==='自チーム'?'自チーム':opponent,
+    rotation:recRot,team:'自チーム',
+    playType:'レセプ',player:'',result:'ミス',
+    resultDetail:'サービスエース',
+    attackType:'',blockerCount:'',
+    receiveGrade:'D',receiver:state.receiver,
+    zoneFrom:'',zoneTo:'',note:'',
+  };
+
+  calcServeAndRotation(opponent);
+  updateDisp();saveLocal();
+
+  var l=scoreUs+'-'+scoreThem+' [R'+recRot+'] サービスエース';
+  if(state.receiver)l+=' ('+state.receiver+')';
+  addLog(l);
+
+  sendRecord(data,function(){
+    showFB('✅ サービスエース記録');
+    resetInput();showRecvBar();
+    recording=false;document.getElementById('btnAce').disabled=false;
+  },function(){
+    scoreThem--;serveTeam=recServe;rotation=recRot;
+    updateDisp();saveLocal();
+    recording=false;document.getElementById('btnAce').disabled=false;
+  });
+}
+
+// ========== パターン選択 ==========
+function selPattern(el,p){
+  document.querySelectorAll('.bp').forEach(function(b){b.classList.remove('s','p1','p2','p4')});
+  el.classList.add('s');
+  if(p===1)el.classList.add('p1');
+  if(p===2)el.classList.add('p2');
+  if(p===4)el.classList.add('p4');
+  pattern=p;
+  state.play='';state.player='';state.detail='';state.attack='';state.blocker='';state.zoneFrom='';state.zoneTo='';
+  document.querySelectorAll('#grpPlay .b,#grpPlayer .b,#grpBlocker .b').forEach(function(b){b.classList.remove('s')});
+  document.getElementById('selAttack').value='';
+  document.getElementById('selDetail').value='';
+  clearZone();
+  var n=document.getElementById('noteInput');if(n)n.value='';
+
+  document.getElementById('secPlayer').style.display=(p===1||p===4)?'':'none';
+  document.getElementById('secPlayerLabel').textContent='選手';
+  document.getElementById('secPlay').style.display='';
+  document.getElementById('secDetail').style.display='none';
+  document.getElementById('secToggles').style.display='none';
+  document.getElementById('secNote').style.display='';
+
+  document.querySelectorAll('.tgl-body').forEach(function(b){b.style.display='none'});
+  document.querySelectorAll('.tgl-header').forEach(function(h){
+    h.textContent=h.textContent.replace('▼','▶');
+    h.classList.remove('open');
+  });
+
+  checkReady();
+}
+
+function sel(group,el,val){
+  var map={'play':'grpPlay','player':'grpPlayer','blocker':'grpBlocker'};
+  var gid=map[group];
+  document.querySelectorAll('#'+gid+' .b').forEach(function(b){b.classList.remove('s')});
+  el.classList.add('s');state[group]=val;
+
+  if(group==='play'){
+    var ia=isAtk(val);
+
+    // トグルセクション表示
+    document.getElementById('secToggles').style.display='';
+    document.getElementById('tglAttack').style.display=ia?'':'none';
+    document.getElementById('tglBlocker').style.display=ia?'':'none';
+    document.getElementById('secNote').style.display='';  // ← 追加
+
+    // ミスパターン(4)の時 → 結果詳細を表示
+    document.getElementById('secDetail').style.display=(pattern===4)?'':'none';
+
+    if(!ia){state.attack='';state.blocker='';
+      document.getElementById('selAttack').value='';
+      document.querySelectorAll('#grpBlocker .b').forEach(function(b){b.classList.remove('s')});
+    }
+  }
+  checkReady();
+}
+
+// ========== ゾーン ==========
+function selZone(el,val){
+  if(zoneStep==='from'){
+    document.querySelectorAll('.zb').forEach(function(b){b.classList.remove('sf')});
+    el.classList.add('sf');state.zoneFrom=val;zoneStep='to';
+  }else{
+    document.querySelectorAll('.zb').forEach(function(b){b.classList.remove('st2')});
+    el.classList.add('st2');state.zoneTo=val;zoneStep='from';
+  }
+  checkReady();
+}
+
+function clearZone(){
+  document.querySelectorAll('.zb').forEach(function(b){b.classList.remove('sf','st2')});
+  state.zoneFrom='';state.zoneTo='';zoneStep='from';
+}
+
+// ========== 記録可能チェック ==========
+function checkReady(){
+  var r=false;
+  if(pattern===1){r=!!state.play&&!!state.player}
+  else if(pattern===2){r=!!state.play}
+  //else if(pattern===3){r=!!state.play}
+  else if(pattern===4){r=!!state.play&&!!state.player}
+  document.getElementById('btnRecord').disabled=!r;
+}
+
+// ========== サーブ権・ローテーション計算 ==========
+function calcServeAndRotation(pt){
+  if(pt==='自チーム'){
+    if(serveTeam!=='自チーム'){serveTeam='自チーム';rotation=(rotation%6)+1}
+  }else{
+    if(serveTeam==='自チーム'){serveTeam='相手'}
+  }
+}
+
+// ========== 通信（タイムアウト対策付き） ==========
+function sendRecord(data,onSuccess,onFail){
+  // 10秒タイムアウト
+  var timedOut=false;
+  recordTimeout=setTimeout(function(){
+    timedOut=true;
+    recording=false;
+    document.getElementById('btnRecord').disabled=false;
+    document.getElementById('btnAce').disabled=false;
+    showFB('⚠️ 通信遅延。データは送信中です');
+  },10000);
+
+  google.script.run
+    .withSuccessHandler(function(){
+      if(timedOut)return;
+      clearTimeout(recordTimeout);
+      onSuccess();
+    })
+    .withFailureHandler(function(e){
+      if(timedOut)return;
+      clearTimeout(recordTimeout);
+      showFB('❌ '+e.message);
+      onFail();
+    })
+    .addRecord(data);
+}
+
+// ========== 記録 ==========
+function record(){
+  if(recording)return;recording=true;
+  document.getElementById('btnRecord').disabled=true;
+
+  var pointTeam,team,result;
+  switch(pattern){
+    case 1:pointTeam='自チーム';team='自チーム';result='得点';break;
+    case 2:pointTeam='自チーム';team=opponent;result='ミス';break;
+    //case 3:pointTeam=opponent;team=opponent;result='得点';break;
+    case 4:pointTeam=opponent;team='自チーム';result='ミス';break;
+  }
+
+  var recServe=serveTeam,recRot=rotation;
+
+  // スコア更新
+  if(pattern===1||pattern===2){scoreUs++}else{scoreThem++}
+
+  // data作成（showRecvBarの前に！）
+  var noteEl=document.getElementById('noteInput');
+  var data={
+    date:matchDate,opponent:opponent,set:currentSet,
+    scoreUs:scoreUs,scoreThem:scoreThem,pointTeam:pointTeam,
+    serveTeam:recServe==='自チーム'?'自チーム':opponent,
+    rotation:recRot,team:team,
+    playType:state.play,player:state.player,result:result,
+    resultDetail:state.detail,
+    attackType:state.attack,blockerCount:state.blocker,
+    receiveGrade:state.receive,receiver:state.receiver,
+    zoneFrom:state.zoneFrom,zoneTo:state.zoneTo,
+    note:noteEl?noteEl.value:'',
+  };
+
+  // ログ（dataから参照）
+  var l=scoreUs+'-'+scoreThem+' [R'+recRot+'/S:'+(recServe==='自チーム'?'自':opponent)+']';
+  l+=' '+pointTeam+'得点|'+team+' '+state.play;
+  if(state.player)l+=' '+state.player;
+  l+=' →'+result;
+  if(state.detail)l+=' ('+state.detail+')';
+  if(state.attack)l+=' '+state.attack;
+  if(state.blocker)l+=' B'+state.blocker;
+  if(data.receiveGrade)l+=' キャッチ'+data.receiveGrade+(data.receiver?'('+data.receiver+')':'');
+  if(state.zoneFrom)l+=' ['+state.zoneFrom+'→'+state.zoneTo+']';
+  addLog(l);
+
+  // サーブ権・ローテーション計算（次のラリー用）
+  calcServeAndRotation(pointTeam);
+  updateDisp();
+  showRecvBar();
+  saveLocal();
+
+  // 送信
+  sendRecord(data,function(){
+    showFB('✅ 記録しました');
+    resetInput();recording=false;
+  },function(){
+    // 失敗時: スコア・状態を戻す
+    if(pattern===1||pattern===2){scoreUs--}else{scoreThem--}
+    serveTeam=recServe;rotation=recRot;
+    updateDisp();showRecvBar();saveLocal();
+    recording=false;
+    document.getElementById('btnRecord').disabled=false;
+  });
+}
+
+// ========== 入力リセット ==========
+function resetInput(){
+  pattern=0;
+  state={play:'',player:'',detail:'',attack:'',blocker:'',receive:'',receiver:'',zoneFrom:'',zoneTo:''};
+  zoneStep='from';
+  document.querySelectorAll('.bp,#grpPlay .b,#grpPlayer .b,#grpBlocker .b').forEach(function(b){b.classList.remove('s')});
+  document.getElementById('selAttack').value='';
+  document.getElementById('selDetail').value='';
+  clearZone();
+  document.getElementById('secPlay').style.display='none';
+  document.getElementById('secPlayer').style.display='none';
+  document.getElementById('secDetail').style.display='none';
+  document.getElementById('secToggles').style.display='none';
+  document.getElementById('secNote').style.display='none';  // ← 追加
+  document.getElementById('tglAttack').style.display='none';
+  document.getElementById('tglBlocker').style.display='none';
+  document.querySelectorAll('.tgl-body').forEach(function(b){b.style.display='none'});
+  document.querySelectorAll('.tgl-header').forEach(function(h){
+    h.textContent=h.textContent.replace('▼','▶');
+    h.classList.remove('open');
+  });
+  document.getElementById('btnRecord').disabled=true;
+  document.getElementById('btnAce').style.display='none';
+  document.getElementById('btnRecord').style.display='';
+  var n=document.getElementById('noteInput');if(n)n.value='';
+}
+
+// ========== 取消 ==========
+function undo(){
+  if(recording)return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(res&&res.success){
+        if(res.deleted.pointTeam==='自チーム'){scoreUs=Math.max(0,scoreUs-1)}
+        else{scoreThem=Math.max(0,scoreThem-1)}
+        currentSet=res.deleted.set;
+        serveTeam=res.deleted.serveTeam||serveTeam;
+        rotation=parseInt(res.deleted.rotation)||rotation;
+        updateDisp();showRecvBar();saveLocal();
+        addLog('↩️ 取消');showFB('↩️ 取消しました');
+      }else{showFB('取消データなし')}
+    })
+    .withFailureHandler(function(e){showFB('❌ '+e.message)})
+    .undoLast();
+}
+
+// ========== 次のセット ==========
+function nextSet(){
+  if(confirm('SET'+currentSet+'終了→SET'+(currentSet+1)+'へ？')){
+    currentSet++;scoreUs=0;scoreThem=0;
+    var ns=prompt('SET'+currentSet+'のサーブ権？\n1:自チーム 2:相手','1');
+    serveTeam=(ns==='2')?'相手':'自チーム';
+    var nr=prompt('SET'+currentSet+'のローテーション(1-6)？','1');
+    rotation=parseInt(nr)||1;
+    if(rotation<1||rotation>6)rotation=1;
+    updateDisp();showRecvBar();resetInput();saveLocal();
+    addLog('=== SET'+currentSet+' (S:'+serveTeam+' R:'+rotation+') ===');
+  }
+}
+
+// ========== リセット ==========
+function resetAll(){
+  if(confirm('リセットしますか？\n（記録済みデータは消えません）')){
+    currentSet=1;scoreUs=0;scoreThem=0;
+    serveTeam=setupState.serve||'自チーム';
+    rotation=setupState.rotation||1;
+    updateDisp();showRecvBar();resetInput();saveLocal();
+    addLog('=== リセット ===');
+  }
+}
+
+// ========== ユーティリティ ==========
+function addLog(t){var l=document.getElementById('log');l.innerHTML='<div>'+t+'</div>'+l.innerHTML}
+function showFB(m){var f=document.getElementById('feedback');f.textContent=m;f.className='fb ok';setTimeout(function(){f.className='fb hd'},2000)}
+</script>
+
+</body>
+</html>
