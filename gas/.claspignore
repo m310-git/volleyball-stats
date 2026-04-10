@@ -1,0 +1,7 @@
+# clasp設定ファイルはGASにpushしない
+.clasp.json
+appsscript.json
+
+# ローカルファイル
+**/.local_secrets.json
+**/service_account.json
