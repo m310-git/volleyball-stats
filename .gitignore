@@ -4,3 +4,4 @@ __pycache__/
 .env/
 data/*.csv
 analysis/.local_secrets.json
+gas/.clasp.json
