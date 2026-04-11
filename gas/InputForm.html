@@ -232,9 +232,39 @@
     <button class="cb" onclick="nextSet()">次SET▶</button>
     <button class="cb" onclick="changeMatch()">📋試合変更</button>
     <button class="cb" onclick="resetAll()">🔄リセット</button>
+    <button class="cb" onclick="showReviewScreen()">🤖 AI確認</button>
   </div>
 
   <div class="lg" id="log"></div>
+</div>
+
+<!-- AI確認画面 -->
+<div id="reviewScreen" style="display:none">
+  <div class="fb hd" id="reviewFeedback"></div>
+  
+  <div class="sb">
+    <div class="mi">🤖 AI確認</div>
+  </div>
+  
+  <!-- 戻るボタン -->
+  <button class="br" onclick="showMain()" style="background:#2196F3">← 記録画面へ戻る</button>
+  
+  <!-- セット選択タブ -->
+  <div class="sec">
+    <div class="st">セット選択</div>
+    <div class="bg c3" id="setTabs"></div>
+  </div>
+  
+  <!-- 進捗サマリー -->
+  <div class="sec">
+    <div class="st" id="progressSummary">読み込み中...</div>
+  </div>
+  
+  <!-- 一括承認ボタン -->
+  <button class="br" onclick="bulkApprove()" style="background:#4CAF50">🟢 高確信一括承認</button>
+  
+  <!-- ラリーカード一覧 -->
+  <div id="rallyCards"></div>
 </div>
 
 <script>
@@ -806,6 +836,163 @@ function resetAll(){
 // ========== ユーティリティ ==========
 function addLog(t){var l=document.getElementById('log');l.innerHTML='<div>'+t+'</div>'+l.innerHTML}
 function showFB(m){var f=document.getElementById('feedback');f.textContent=m;f.className='fb ok';setTimeout(function(){f.className='fb hd'},2000)}
+
+// ========== AI確認画面 ==========
+var currentReviewSet=1;
+var reviewRallies=[];
+
+function showReviewScreen(){
+  document.getElementById('mainScreen').style.display='none';
+  document.getElementById('reviewScreen').style.display='';
+  currentReviewSet=1;
+  loadReviewData();
+}
+
+function showMain(){
+  document.getElementById('reviewScreen').style.display='none';
+  document.getElementById('mainScreen').style.display='';
+}
+
+function loadReviewData(){
+  showReviewFB('読み込み中...');
+  
+  google.script.run.withSuccessHandler(function(res){
+    if(!res.success){
+      showReviewFB('❌ '+res.error);
+      return;
+    }
+    renderSetTabs(res.summary);
+    if(res.summary.length>0){
+      currentReviewSet=res.summary[0].set;
+    }
+    loadRallies(currentReviewSet);
+  }).withFailureHandler(function(e){
+    showReviewFB('❌ '+e.message);
+  }).getAIProposalSummary();
+}
+
+function renderSetTabs(summary){
+  var tabs=document.getElementById('setTabs');
+  tabs.innerHTML='';
+  summary.forEach(function(s){
+    var b=document.createElement('div');
+    b.className='b';
+    b.textContent='SET'+s.set;
+    b.onclick=function(){
+      currentReviewSet=s.set;
+      loadRallies(s.set);
+      document.querySelectorAll('#setTabs .b').forEach(function(el){el.classList.remove('s')});
+      b.classList.add('s');
+    };
+    if(s.set===currentReviewSet)b.classList.add('s');
+    tabs.appendChild(b);
+  });
+}
+
+function loadRallies(setNumber){
+  showReviewFB('読み込み中...');
+  
+  google.script.run.withSuccessHandler(function(res){
+    if(!res.success){
+      showReviewFB('❌ '+res.error);
+      return;
+    }
+    reviewRallies=res.rallies;
+    renderRallyCards(res.rallies);
+    updateProgressSummary(res.rallies);
+  }).withFailureHandler(function(e){
+    showReviewFB('❌ '+e.message);
+  }).getAIProposals(setNumber);
+}
+
+function renderRallyCards(rallies){
+  var container=document.getElementById('rallyCards');
+  container.innerHTML='';
+  
+  if(rallies.length===0){
+    container.innerHTML='<div style="text-align:center;padding:20px;color:#888">データがありません</div>';
+    return;
+  }
+  
+  rallies.forEach(function(r){
+    if(r.line_index!==1)return; // line_index=1のみ表示
+    
+    var statusColor=r.status==='HIGH'?'#4CAF50':r.status==='MEDIUM'?'#FF9800':r.status==='LOW'?'#f44336':'#999';
+    var statusLabel=r.status==='HIGH'?'🟢高確信':r.status==='MEDIUM'?'🟡要確認':r.status==='LOW'?'🔴低確信':r.status;
+    
+    var card=document.createElement('div');
+    card.style.cssText='background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px;margin-bottom:8px';
+    card.innerHTML=
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'+
+        '<span style="font-size:9px;color:'+statusColor+';font-weight:bold">'+statusLabel+'</span>'+
+        '<span style="font-size:9px;color:#666">確信度:'+(r.confidence*100).toFixed(0)+'%</span>'+
+      '</div>'+
+      '<div style="font-size:11px">'+
+        '<strong>得点:</strong> '+r.point_team+' | '+
+        '<strong>プレー:</strong> '+r.play_type+' '+r.player+
+      '</div>'+
+      '<div style="margin-top:5px">'+
+        '<button onclick="approveSingle(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer">✅ 承認</button>'+
+        '<button onclick="skipRally(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#999;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:4px">⏭ スキップ</button>'+
+      '</div>';
+    container.appendChild(card);
+  });
+}
+
+function updateProgressSummary(rallies){
+  var high=0,medium=0,low=0,approved=0;
+  rallies.forEach(function(r){
+    if(r.line_index!==1)return;
+    if(r.status==='HIGH')high++;
+    else if(r.status==='MEDIUM')medium++;
+    else if(r.status==='LOW')low++;
+    else if(r.status==='APPROVED')approved++;
+  });
+  var total=high+medium+low+approved;
+  document.getElementById('progressSummary').textContent=
+    '全'+total+'件 | 🟢'+high+' | 🟡'+medium+' | 🔴'+low+' | ✅'+approved;
+}
+
+function approveSingle(rallyKey){
+  showReviewFB('承認中...');
+  google.script.run.withSuccessHandler(function(res){
+    if(res.success){
+      showReviewFB('✅ 承認しました');
+      loadRallies(currentReviewSet);
+    }else{
+      showReviewFB('❌ '+res.error);
+    }
+  }).withFailureHandler(function(e){
+    showReviewFB('❌ '+e.message);
+  }).approveProposal(rallyKey);
+}
+
+function bulkApprove(){
+  if(!confirm('高確信・要確認のラリーを一括承認しますか？'))return;
+  showReviewFB('一括承認中...');
+  google.script.run.withSuccessHandler(function(res){
+    if(res.success){
+      showReviewFB('✅ '+res.approved+'件を承認しました');
+      loadRallies(currentReviewSet);
+    }else{
+      showReviewFB('❌ '+res.error);
+    }
+  }).withFailureHandler(function(e){
+    showReviewFB('❌ '+e.message);
+  }).bulkApproveHighConfidence(currentReviewSet);
+}
+
+function skipRally(rallyKey){
+  // スキップは何もしない（単に確認画面でスキップするだけ）
+  showReviewFB('スキップしました');
+}
+
+function showReviewFB(m){
+  var f=document.getElementById('reviewFeedback');
+  f.textContent=m;
+  f.className='fb ok';
+  setTimeout(function(){f.className='fb hd'},2000);
+}
 </script>
 
 </body>
