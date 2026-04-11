@@ -183,11 +183,20 @@ function manualUpdateNotion() {
 }
 
 // === Notion設定 ===
-var NOTION_TOKEN = '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';
-var NOTION_PAGE_ID = '331feaabd15e80b092a8f392c9157be3';
+function getNotionToken() {
+  var props = PropertiesService.getScriptProperties();
+  return props.getProperty('NOTION_TOKEN');
+}
+
+function getNotionPageId() {
+  var props = PropertiesService.getScriptProperties();
+  return props.getProperty('NOTION_PAGE_ID');
+}
 
 // === Notion自動更新 ===
 function updateNotion() {
+  var NOTION_TOKEN = getNotionToken();
+  var NOTION_PAGE_ID = getNotionPageId();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('生データ');
   var lastRow = sheet.getLastRow();
@@ -255,82 +264,82 @@ function updateNotion() {
     };
   });
 
-  clearNotionPage(NOTION_PAGE_ID);
+  clearNotionPage(NOTION_PAGE_ID, NOTION_TOKEN);
 
   var lastR=results[results.length-1];
-  notionAddHeading(NOTION_PAGE_ID,'3試合比較レポート',1);
-  notionAddText(NOTION_PAGE_ID,'最終更新: '+lastR.date+' vs '+lastR.opponent+' | 全'+data.length+'ラリー');
-  notionAddDivider(NOTION_PAGE_ID);
+  notionAddHeading(NOTION_PAGE_ID,'3試合比較レポート',1, NOTION_TOKEN);
+  notionAddText(NOTION_PAGE_ID,'最終更新: '+lastR.date+' vs '+lastR.opponent+' | 全'+data.length+'ラリー', NOTION_TOKEN);
+  notionAddDivider(NOTION_PAGE_ID, NOTION_TOKEN);
 
-  notionAddHeading(NOTION_PAGE_ID,'試合結果');
+  notionAddHeading(NOTION_PAGE_ID,'試合結果', 2, NOTION_TOKEN);
   notionAddTable(NOTION_PAGE_ID,['日付','相手','スコア','結果','ラリー数'],
-    results.map(function(r){return[r.date,r.opponent,r.scoreUs+'-'+r.scoreThem,r.result,r.rallies+'']}));
-  notionAddDivider(NOTION_PAGE_ID);
+    results.map(function(r){return[r.date,r.opponent,r.scoreUs+'-'+r.scoreThem,r.result,r.rallies+'']}), NOTION_TOKEN);
+  notionAddDivider(NOTION_PAGE_ID, NOTION_TOKEN);
 
-  notionAddHeading(NOTION_PAGE_ID,'SO率 / BRK率');
+  notionAddHeading(NOTION_PAGE_ID,'SO率 / BRK率', 2, NOTION_TOKEN);
   notionAddTable(NOTION_PAGE_ID,['日付','相手','SO率','BRK率','攻撃効率'],
-    results.map(function(r){return[r.date,r.opponent,r.soRate+'% ('+r.soWon+'/'+r.soTotal+')',r.brkRate+'% ('+r.brkWon+'/'+r.brkTotal+')',r.usEff+'%']}));
-  notionAddDivider(NOTION_PAGE_ID);
+    results.map(function(r){return[r.date,r.opponent,r.soRate+'% ('+r.soWon+'/'+r.soTotal+')',r.brkRate+'% ('+r.brkWon+'/'+r.brkTotal+')',r.usEff+'%']}), NOTION_TOKEN);
+  notionAddDivider(NOTION_PAGE_ID, NOTION_TOKEN);
 
-  notionAddHeading(NOTION_PAGE_ID,'サーブキャッチ');
+  notionAddHeading(NOTION_PAGE_ID,'サーブキャッチ', 2, NOTION_TOKEN);
   notionAddTable(NOTION_PAGE_ID,['日付','相手','A','B','C','D','A+B率'],
-    results.map(function(r){return[r.date,r.opponent,r.recvA+'',r.recvB+'',r.recvC+'',r.recvD+'',r.recvABRate+'%']}));
-  notionAddDivider(NOTION_PAGE_ID);
+    results.map(function(r){return[r.date,r.opponent,r.recvA+'',r.recvB+'',r.recvC+'',r.recvD+'',r.recvABRate+'%']}), NOTION_TOKEN);
+  notionAddDivider(NOTION_PAGE_ID, NOTION_TOKEN);
 
-  notionAddHeading(NOTION_PAGE_ID,'ローテーション別');
+  notionAddHeading(NOTION_PAGE_ID,'ローテーション別', 2, NOTION_TOKEN);
   var rotH=['日付','相手','R1','R2','R3','R4','R5','R6'];
   notionAddTable(NOTION_PAGE_ID,rotH,results.map(function(r){
     var row=[r.date,r.opponent];
     for(var i=1;i<=6;i++){var t=r.rot[i].won+r.rot[i].lost;row.push((t>0?(r.rot[i].won/t*100).toFixed(0):'0')+'% ('+r.rot[i].won+'/'+t+')')}
     return row;
-  }));
-  notionAddDivider(NOTION_PAGE_ID);
+  }), NOTION_TOKEN);
+  notionAddDivider(NOTION_PAGE_ID, NOTION_TOKEN);
 
   var plays=['サーブ','スパイク','フェイント','プッシュ','ブロック'];
-  notionAddHeading(NOTION_PAGE_ID,'プレー別');
+  notionAddHeading(NOTION_PAGE_ID,'プレー別', 2, NOTION_TOKEN);
   notionAddTable(NOTION_PAGE_ID,['日付','相手'].concat(plays),
-    results.map(function(r){var row=[r.date,r.opponent];plays.forEach(function(p){row.push(r.playPt[p]+'得/'+r.playMs[p]+'失')});return row}));
+    results.map(function(r){var row=[r.date,r.opponent];plays.forEach(function(p){row.push(r.playPt[p]+'得/'+r.playMs[p]+'失')});return row}), NOTION_TOKEN);
 }
 
 // === Notion APIヘルパー ===
-function notionFetch(endpoint,payload){
+function notionFetch(endpoint,payload,token){
   return JSON.parse(UrlFetchApp.fetch('https://api.notion.com/v1/'+endpoint,{
-    method:'post',headers:{'Authorization':'Bearer '+NOTION_TOKEN,'Content-Type':'application/json','Notion-Version':'2022-06-28'},
+    method:'post',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json','Notion-Version':'2022-06-28'},
     payload:JSON.stringify(payload),muteHttpExceptions:true
   }).getContentText());
 }
 
-function notionGet(endpoint){
+function notionGet(endpoint,token){
   return JSON.parse(UrlFetchApp.fetch('https://api.notion.com/v1/'+endpoint,{
-    method:'get',headers:{'Authorization':'Bearer '+NOTION_TOKEN,'Notion-Version':'2022-06-28'},muteHttpExceptions:true
+    method:'get',headers:{'Authorization':'Bearer '+token,'Notion-Version':'2022-06-28'},muteHttpExceptions:true
   }).getContentText());
 }
 
-function clearNotionPage(pageId){
-  var blocks=notionGet('blocks/'+pageId+'/children');
+function clearNotionPage(pageId,token){
+  var blocks=notionGet('blocks/'+pageId+'/children',token);
   if(blocks.results){blocks.results.forEach(function(b){
     UrlFetchApp.fetch('https://api.notion.com/v1/blocks/'+b.id,{
-      method:'delete',headers:{'Authorization':'Bearer '+NOTION_TOKEN,'Notion-Version':'2022-06-28'},muteHttpExceptions:true
+      method:'delete',headers:{'Authorization':'Bearer '+token,'Notion-Version':'2022-06-28'},muteHttpExceptions:true
     });
   })}
 }
 
-function notionAddHeading(pid,text,level){
+function notionAddHeading(pid,text,level,token){
   level=level||2;var b={type:'heading_'+level};b['heading_'+level]={rich_text:[{text:{content:text}}]};
-  notionFetch('blocks/'+pid+'/children',{children:[b]});
+  notionFetch('blocks/'+pid+'/children',{children:[b]},token);
 }
 
-function notionAddText(pid,text){
-  notionFetch('blocks/'+pid+'/children',{children:[{type:'paragraph',paragraph:{rich_text:[{text:{content:text}}]}}]});
+function notionAddText(pid,text,token){
+  notionFetch('blocks/'+pid+'/children',{children:[{type:'paragraph',paragraph:{rich_text:[{text:{content:text}}]}}]},token);
 }
 
-function notionAddDivider(pid){
-  notionFetch('blocks/'+pid+'/children',{children:[{type:'divider',divider:{}}]});
+function notionAddDivider(pid,token){
+  notionFetch('blocks/'+pid+'/children',{children:[{type:'divider',divider:{}}]},token);
 }
 
-function notionAddTable(pid,headers,rows){
+function notionAddTable(pid,headers,rows,token){
   var w=headers.length;
   var trs=[{type:'table_row',table_row:{cells:headers.map(function(h){return[{type:'text',text:{content:h+''}}]})}}];
   rows.forEach(function(row){trs.push({type:'table_row',table_row:{cells:row.map(function(v){return[{type:'text',text:{content:v+''}}]})}})});
-  notionFetch('blocks/'+pid+'/children',{children:[{type:'table',table:{table_width:w,has_column_header:true,has_row_header:false,children:trs}}]});
+  notionFetch('blocks/'+pid+'/children',{children:[{type:'table',table:{table_width:w,has_column_header:true,has_row_header:false,children:trs}}]},token);
 }
