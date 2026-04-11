@@ -848,6 +848,7 @@ var reviewRallies=[];
 function showReviewScreen(){
   document.getElementById('mainScreen').style.display='none';
   document.getElementById('reviewScreen').style.display='';
+  ReviewState.setCurrentSet(1);
   currentReviewSet=1;
   loadReviewData();
 }
@@ -1035,38 +1036,10 @@ function updateProgressSummary(rallies){
     '全'+total+'件 | 🟢'+high+' | 🟡'+medium+' | 🔴'+low+' | ✅'+approved;
 }
 
-function approveSingle(rallyKey){
-  showReviewFB('承認中...');
-  google.script.run.withSuccessHandler(function(res){
-    if(res.success){
-      showReviewFB('✅ 承認しました');
-      loadRallies(currentReviewSet);
-    }else{
-      showReviewFB('❌ '+res.error);
-    }
-  }).withFailureHandler(function(e){
-    showReviewFB('❌ '+e.message);
-  }).approveProposal(rallyKey);
-}
-
-function bulkApprove(){
-  if(!confirm('高確信・要確認のラリーを一括承認しますか？'))return;
-  showReviewFB('一括承認中...');
-  google.script.run.withSuccessHandler(function(res){
-    if(res.success){
-      showReviewFB('✅ '+res.approved+'件を承認しました');
-      loadRallies(currentReviewSet);
-    }else{
-      showReviewFB('❌ '+res.error);
-    }
-  }).withFailureHandler(function(e){
-    showReviewFB('❌ '+e.message);
-  }).bulkApproveHighConfidence(currentReviewSet);
-}
-
 function skipRally(rallyKey){
   // スキップは何もしない（単に確認画面でスキップするだけ）
   showReviewFB('スキップしました');
+  scrollToNextUnconfirmed();
 }
 
 function showReviewFB(m){

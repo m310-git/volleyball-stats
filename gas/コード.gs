@@ -340,6 +340,58 @@ function getAIProposalSummary() {
   return { success: true, summary: summary };
 }
 
+/**
+ * canonical JSON生成（設計書§4.5）
+ * 精度ログ比較対象項目のみ含むラリー単位JSON
+ * @param {Array} row1 - line_index=1の行データ
+ * @param {Object} col - カラムマッピング
+ * @param {boolean} isTwoLine - 2行記録か
+ * @param {Array} row2 - line_index=2の行データ（2行記録の場合）
+ * @return {string} canonical JSON文字列
+ */
+function _buildCanonicalJSON(row1, col, isTwoLine, row2) {
+  var g = function(row, field) {
+    if (!row || col[field] === undefined) return '';
+    var v = row[col[field]];
+    if (v === null || v === undefined || v === 'null' || v === 'None') return '';
+    return v.toString().trim();
+  };
+  
+  var canonical = {};
+  
+  // 設計書§4.5 canonical JSON再構成ルール
+  canonical.point_team = g(row1, 'point_team');
+  canonical.deciding_team = g(row1, 'deciding_team');
+  canonical.receive_grade = g(row1, 'receive_grade');
+  canonical.receiver = g(row1, 'receiver');
+  canonical.result_detail = g(row1, 'result_detail');
+  canonical.note = g(row1, 'note');
+  
+  if (isTwoLine && row2) {
+    // 2行記録: play_type/player/attack_type等はline2から取得
+    canonical.play_type = g(row2, 'play_type');
+    canonical.player = g(row2, 'player');
+    canonical.attack_type = g(row2, 'attack_type');
+    canonical.blocker_count = g(row2, 'blocker_count');
+    canonical.zone_from = g(row2, 'zone_from');
+    canonical.zone_to = g(row2, 'zone_to');
+    // our_defense_typeはline1のplay_typeから逆算
+    var line1PlayType = g(row1, 'play_type');
+    canonical.our_defense_type = (line1PlayType === 'ディグ' || line1PlayType === 'ブロック') ? line1PlayType : '';
+  } else {
+    // 1行記録: すべてline1から
+    canonical.play_type = g(row1, 'play_type');
+    canonical.player = g(row1, 'player');
+    canonical.attack_type = g(row1, 'attack_type');
+    canonical.blocker_count = g(row1, 'blocker_count');
+    canonical.zone_from = g(row1, 'zone_from');
+    canonical.zone_to = g(row1, 'zone_to');
+    canonical.our_defense_type = '';
+  }
+  
+  return JSON.stringify(canonical);
+}
+
 // === AI提案系関数（フェーズ2: 承認系） ===
 
 /**
@@ -872,6 +924,19 @@ function deleteRally(rallyKey) {
     var setNumber = parseInt(deletedRow[col['set']]) || 1;
     _recalcDerivedValuesInternal(setNumber);
     
+    // rally_seq振り直し（設計書§8.2）
+    var newLastRow = sheet.getLastRow();
+    if (newLastRow > 1) {
+      var newData = sheet.getRange(2, 1, newLastRow - 1, AI_COLUMN_COUNT).getValues();
+      var seq = 1;
+      for (var k = 0; k < newData.length; k++) {
+        if (parseInt(newData[k][col['set']]) === setNumber && parseInt(newData[k][col['line_index']]) === 1) {
+          sheet.getRange(k + 2, col['rally_seq'] + 1).setValue(seq);
+          seq++;
+        }
+      }
+    }
+    
     return { success: true };
     
   } catch (e) {
@@ -1015,6 +1080,11 @@ function insertRally(afterRallyKey, rallyData) {
 function recalcDerivedValues(setNumber) {
   var lock = LockService.getScriptLock();
   try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, error: 'ロック取得失敗: ' + e.message };
+  }
+  try {
     return _recalcDerivedValuesInternal(setNumber);
   } catch (e) {
     return { success: false, error: e.message };
@@ -1082,6 +1152,18 @@ function commitToRawData(setNumber) {
       var lineIndex = parseInt(row[aiCol['line_index']]) || 1;
       return setVal === setNumber && status === 'APPROVED' && lineIndex === 1;
     });
+    
+    // COMMITTED済みの再commit防止チェック（設計書§4.6）
+    var hasCommitted = aiData.some(function(row) {
+      var setVal = parseInt(row[aiCol['set']]) || 1;
+      var status = row[aiCol['status']] ? row[aiCol['status']].toString() : '';
+      var lineIndex = parseInt(row[aiCol['line_index']]) || 1;
+      return setVal === setNumber && lineIndex === 1 && status === 'COMMITTED';
+    });
+    
+    if (hasCommitted && toCommit.length === 0) {
+      return { success: false, committed: 0, error: 'このセットは既に転記済みです。' };
+    }
     
     // 未承認データが存在する場合はエラー
     var hasUnapproved = aiData.some(function(row) {
