@@ -6,3 +6,5 @@ data/*.csv
 analysis/.local_secrets.json
 analysis/volleyball-stats-492014-ac04691fa39c.json
 gas/.clasp.json
+analysis/*.mp4
+analysis/run_ai_analyze.py
