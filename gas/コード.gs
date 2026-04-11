@@ -512,6 +512,341 @@ function bulkApproveHighConfidence(setNumber) {
   }
 }
 
+// === AI提案系関数（フェーズ3: 再計算・編集系） ===
+
+/**
+ * 派生値再計算（内部ヘルパー、Lockなし）
+ * @param {number} setNumber - セット番号
+ * @return {Object} { success: boolean, error: string }
+ */
+function _recalcDerivedValuesInternal(setNumber) {
+  var sheet = getAIProposalsSheet();
+  if (!sheet) {
+    return { success: false, error: 'AI提案シートがありません' };
+  }
+  
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    return { success: true };
+  }
+  
+  var col = getAIColumnMapping(sheet);
+  var data = sheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
+  
+  // 指定セットでフィルタ（line_index=1のみ）
+  var filtered = data.filter(function(row) {
+    var setVal = parseInt(row[col['set']]) || 1;
+    var lineIndex = parseInt(row[col['line_index']]) || 1;
+    return setVal === setNumber && lineIndex === 1;
+  });
+  
+  if (filtered.length === 0) {
+    return { success: true };
+  }
+  
+  // rally_seqでソート
+  filtered.sort(function(a, b) {
+    var seqA = parseInt(a[col['rally_seq']]) || 0;
+    var seqB = parseInt(b[col['rally_seq']]) || 0;
+    return seqA - seqB;
+  });
+  
+  // 初期値取得（最初の行から）
+  var firstRow = filtered[0];
+  var scoreUs = 0;
+  var scoreThem = 0;
+  var serveTeam = firstRow[col['initial_serve_team']] ? firstRow[col['initial_serve_team']].toString() : '';
+  var rotation = parseInt(firstRow[col['initial_rotation']]) || 1;
+  var opponent = firstRow[col['opponent']] ? firstRow[col['opponent']].toString() : '';
+  
+  // 派生値計算
+  var rowsToUpdate = [];
+  filtered.forEach(function(row) {
+    var pointTeam = row[col['point_team']] ? row[col['point_team']].toString() : '';
+    
+    // スコア更新
+    if (pointTeam === '自チーム') {
+      scoreUs++;
+    } else if (pointTeam === '相手') {
+      scoreThem++;
+    }
+    
+    // serve_teamが空欄でない場合のみ更新
+    if (serveTeam) {
+      // 自チーム得点 かつ serve_team!=自チーム → serve_team=自チーム, rotation++
+      if (pointTeam === '自チーム' && serveTeam !== '自チーム') {
+        serveTeam = '自チーム';
+        rotation = (rotation % 6) + 1;
+      }
+      // 相手得点 かつ serve_team==自チーム → serve_team=相手チーム名
+      else if (pointTeam === '相手' && serveTeam === '自チーム') {
+        serveTeam = opponent;
+      }
+    }
+    
+    // team/result決定（設計書§6.1.3）
+    var decidingTeam = row[col['deciding_team']] ? row[col['deciding_team']].toString() : '';
+    var team = '';
+    var result = '';
+    if (decidingTeam === '自チーム') {
+      if (pointTeam === '自チーム') {
+        team = '自チーム';
+        result = '得点';
+      } else {
+        team = '自チーム';
+        result = 'ミス';
+      }
+    } else {
+      if (pointTeam === '相手') {
+        team = opponent;
+        result = '得点';
+      } else {
+        team = opponent;
+        result = 'ミス';
+      }
+    }
+    
+    // 更新行作成
+    var updatedRow = row.slice();
+    updatedRow[col['score_us']] = scoreUs;
+    updatedRow[col['score_them']] = scoreThem;
+    updatedRow[col['serve_team']] = serveTeam;
+    updatedRow[col['rotation']] = rotation;
+    updatedRow[col['team']] = team;
+    updatedRow[col['result']] = result;
+    
+    rowsToUpdate.push(updatedRow);
+    
+    // 2行記録の場合、同じ派生値を設定
+    var isTwoLine = row[col['is_two_line']] ? row[col['is_two_line']].toString() : 'FALSE';
+    if (isTwoLine === 'TRUE') {
+      var rallyKey = row[col['rally_key']] ? row[col['rally_key']].toString() : '';
+      // 2行目を検索
+      for (var i = 0; i < data.length; i++) {
+        if (data[i][col['rally_key']] && data[i][col['rally_key']].toString() === rallyKey &&
+            parseInt(data[i][col['line_index']]) === 2) {
+          var updatedRow2 = data[i].slice();
+          updatedRow2[col['score_us']] = scoreUs;
+          updatedRow2[col['score_them']] = scoreThem;
+          updatedRow2[col['serve_team']] = serveTeam;
+          updatedRow2[col['rotation']] = rotation;
+          updatedRow2[col['team']] = team;
+          updatedRow2[col['result']] = result;
+          rowsToUpdate.push(updatedRow2);
+          break;
+        }
+      }
+    }
+  });
+  
+  // バッチ更新
+  if (rowsToUpdate.length > 0) {
+    var rowIndex = 2;
+    data.forEach(function(originalRow) {
+      for (var i = 0; i < rowsToUpdate.length; i++) {
+        var originalKey = originalRow[col['rally_key']] ? originalRow[col['rally_key']].toString() : '';
+        var updatedKey = rowsToUpdate[i][col['rally_key']] ? rowsToUpdate[i][col['rally_key']].toString() : '';
+        var originalLine = parseInt(originalRow[col['line_index']]) || 1;
+        var updatedLine = parseInt(rowsToUpdate[i][col['line_index']]) || 1;
+        
+        if (originalKey === updatedKey && originalLine === updatedLine) {
+          sheet.getRange(rowIndex, 1, 1, AI_COLUMN_COUNT).setValues([rowsToUpdate[i]]);
+          rowsToUpdate.splice(i, 1);
+          break;
+        }
+      }
+      rowIndex++;
+    });
+  }
+  
+  return { success: true };
+}
+
+/**
+ * ラリー削除
+ * @param {string} rallyKey - ラリーキー
+ * @return {Object} { success: boolean, error: string }
+ */
+function deleteRally(rallyKey) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, error: 'ロック取得失敗: ' + e.message };
+  }
+  
+  try {
+    var sheet = getAIProposalsSheet();
+    if (!sheet) {
+      return { success: false, error: 'AI提案シートがありません' };
+    }
+    
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) {
+      return { success: false, error: 'データがありません' };
+    }
+    
+    var col = getAIColumnMapping(sheet);
+    var data = sheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
+    
+    // rally_keyで検索
+    var rowIndices = [];
+    for (var i = 0; i < data.length; i++) {
+      if (data[i][col['rally_key']] && data[i][col['rally_key']].toString() === rallyKey) {
+        rowIndices.push(i + 2); // 1-indexed
+      }
+    }
+    
+    if (rowIndices.length === 0) {
+      return { success: false, error: 'rally_keyが見つかりません: ' + rallyKey };
+    }
+    
+    // COMMITTEDは削除不可
+    for (var j = 0; j < rowIndices.length; j++) {
+      var row = data[rowIndices[j] - 2];
+      var status = row[col['status']] ? row[col['status']].toString() : '';
+      if (status === 'COMMITTED') {
+        return { success: false, error: 'COMMITTEDは削除できません' };
+      }
+    }
+    
+    // 削除（後ろから行を削除してインデックスズレを防ぐ）
+    rowIndices.sort(function(a, b) { return b - a; });
+    rowIndices.forEach(function(rowIndex) {
+      sheet.deleteRow(rowIndex);
+    });
+    
+    // 派生値再計算（セット番号を取得）
+    var deletedRow = data[rowIndices[rowIndices.length - 1] - 2];
+    var setNumber = parseInt(deletedRow[col['set']]) || 1;
+    _recalcDerivedValuesInternal(setNumber);
+    
+    return { success: true };
+    
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * ラリー挿入
+ * @param {string} afterRallyKey - 挿入位置の後のラリーキー（nullなら先頭）
+ * @param {Object} rallyData - ラリーデータ
+ * @return {Object} { success: boolean, error: string }
+ */
+function insertRally(afterRallyKey, rallyData) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, error: 'ロック取得失敗: ' + e.message };
+  }
+  
+  try {
+    var sheet = getAIProposalsSheet();
+    if (!sheet) {
+      return { success: false, error: 'AI提案シートがありません' };
+    }
+    
+    var lastRow = sheet.getLastRow();
+    var col = getAIColumnMapping(sheet);
+    
+    var insertRowIndex = 2; // デフォルトは先頭
+    var setNumber = rallyData.set || 1;
+    
+    if (afterRallyKey && lastRow > 1) {
+      var data = sheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
+      for (var i = 0; i < data.length; i++) {
+        if (data[i][col['rally_key']] && data[i][col['rally_key']].toString() === afterRallyKey) {
+          insertRowIndex = i + 3; // 挿入位置の後
+          setNumber = parseInt(data[i][col['set']]) || 1;
+          break;
+        }
+      }
+    }
+    
+    // 新しいrally_key生成
+    var newRallyKey = 'rally_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    // 行作成
+    var newRow = new Array(AI_COLUMN_COUNT);
+    newRow.fill('');
+    newRow[col['status']] = 'PENDING';
+    newRow[col['rally_key']] = newRallyKey;
+    newRow[col['line_index']] = 1;
+    newRow[col['is_two_line']] = 'FALSE';
+    newRow[col['confidence']] = 0;
+    newRow[col['date']] = rallyData.date || '';
+    newRow[col['opponent']] = rallyData.opponent || '';
+    newRow[col['set']] = setNumber;
+    newRow[col['point_team']] = rallyData.point_team || '';
+    newRow[col['deciding_team']] = rallyData.deciding_team || '';
+    newRow[col['receive_grade']] = rallyData.receive_grade || '';
+    newRow[col['receiver']] = rallyData.receiver || '';
+    newRow[col['player']] = rallyData.player || '';
+    newRow[col['play_type']] = rallyData.play_type || '';
+    newRow[col['result_detail']] = rallyData.result_detail || '';
+    newRow[col['attack_type']] = rallyData.attack_type || '';
+    newRow[col['blocker_count']] = rallyData.blocker_count || '';
+    newRow[col['zone_from']] = rallyData.zone_from || '';
+    newRow[col['zone_to']] = rallyData.zone_to || '';
+    newRow[col['note']] = rallyData.note || '';
+    newRow[col['ai_note']] = '手動追加';
+    newRow[col['human_modified']] = 'TRUE';
+    newRow[col['initial_serve_team']] = rallyData.initial_serve_team || '';
+    newRow[col['initial_rotation']] = rallyData.initial_rotation || 1;
+    
+    // 挿入
+    sheet.insertRow(insertRowIndex);
+    sheet.getRange(insertRowIndex, 1, 1, AI_COLUMN_COUNT).setValues([newRow]);
+    
+    // 派生値再計算
+    _recalcDerivedValuesInternal(setNumber);
+    
+    // rally_seq振り直し
+    var newLastRow = sheet.getLastRow();
+    var newData = sheet.getRange(2, 1, newLastRow - 1, AI_COLUMN_COUNT).getValues();
+    var seq = 1;
+    for (var j = 0; j < newData.length; j++) {
+      if (parseInt(newData[j][col['set']]) === setNumber && parseInt(newData[j][col['line_index']]) === 1) {
+        sheet.getRange(j + 2, col['rally_seq'] + 1).setValue(seq);
+        seq++;
+      }
+    }
+    
+    return { success: true, rally_key: newRallyKey };
+    
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 派生値再計算（公開関数、Lock必要）
+ * @param {number} setNumber - セット番号
+ * @return {Object} { success: boolean, error: string }
+ */
+function recalcDerivedValues(setNumber) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, error: 'ロック取得失敗: ' + e.message };
+  }
+  
+  try {
+    return _recalcDerivedValuesInternal(setNumber);
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // === Notion設定 ===
 function getNotionPageId() {
   var props = PropertiesService.getScriptProperties();
