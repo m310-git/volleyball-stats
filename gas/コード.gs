@@ -987,6 +987,8 @@ function insertRally(afterRallyKey, rallyData) {
     var initialServeTeam = '';
     var initialRotation = 1;
     var matchId = '';
+    var inheritedDate = '';
+    var inheritedOpponent = '';
     if (lastRow > 1) {
       var data = sheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
       for (var i = 0; i < data.length; i++) {
@@ -994,6 +996,8 @@ function insertRally(afterRallyKey, rallyData) {
           initialServeTeam = data[i][col['initial_serve_team']] ? data[i][col['initial_serve_team']].toString() : '';
           initialRotation = parseInt(data[i][col['initial_rotation']]) || 1;
           matchId = data[i][col['match_id']] ? data[i][col['match_id']].toString() : '';
+          inheritedDate = data[i][col['date']] ? data[i][col['date']].toString() : '';
+          inheritedOpponent = data[i][col['opponent']] ? data[i][col['opponent']].toString() : '';
           break;
         }
       }
@@ -1011,8 +1015,8 @@ function insertRally(afterRallyKey, rallyData) {
     newRow[col['line_index']] = 1;
     newRow[col['is_two_line']] = 'FALSE';
     newRow[col['confidence']] = 0;
-    newRow[col['date']] = rallyData.date || '';
-    newRow[col['opponent']] = rallyData.opponent || '';
+    newRow[col['date']] = rallyData.date || inheritedDate;
+    newRow[col['opponent']] = rallyData.opponent || inheritedOpponent;
     newRow[col['set']] = setNumber;
     newRow[col['point_team']] = rallyData.point_team || '';
     newRow[col['deciding_team']] = rallyData.deciding_team || '';
@@ -1038,28 +1042,40 @@ function insertRally(afterRallyKey, rallyData) {
     newRow[col['initial_rotation']] = initialRotation;
     newRow[col['match_id']] = matchId;
     
-    // 挿入
-    sheet.insertRow(insertRowIndex);
+    // 挿入（insertRowBeforeで空行を挿入してからデータを書き込む）
+    sheet.insertRowBefore(insertRowIndex);
     sheet.getRange(insertRowIndex, 1, 1, AI_COLUMN_COUNT).setValues([newRow]);
     
     // 派生値再計算
     _recalcDerivedValuesInternal(setNumber);
     
-    // rally_seq振り直し
+    // rally_seq・rally_key振り直し（全行。2行記録のline2も同じrally_keyに更新）
     var newLastRow = sheet.getLastRow();
     var newData = sheet.getRange(2, 1, newLastRow - 1, AI_COLUMN_COUNT).getValues();
     var seq = 1;
     var updatedRallyKey = '';
+    // まずline1のrally_seq・rally_keyを振り直し、旧key→新keyのマップを作成
+    var keyMap = {}; // 旧rally_key → 新rally_key
     for (var j = 0; j < newData.length; j++) {
       if (parseInt(newData[j][col['set']]) === setNumber && parseInt(newData[j][col['line_index']]) === 1) {
+        var oldKey = newData[j][col['rally_key']] ? newData[j][col['rally_key']].toString() : '';
+        var newKey = matchId + '_set' + setNumber + '_rally' + seq.toString().padStart(3, '0');
         sheet.getRange(j + 2, col['rally_seq'] + 1).setValue(seq);
-        // rally_keyを正しいrally_seqで更新
-        var currentRallyKey = newData[j][col['rally_key']] ? newData[j][col['rally_key']].toString() : '';
-        if (currentRallyKey === newRallyKey) {
-          updatedRallyKey = matchId + '_set' + setNumber + '_rally' + seq.toString().padStart(3, '0');
-          sheet.getRange(j + 2, col['rally_key'] + 1).setValue(updatedRallyKey);
+        sheet.getRange(j + 2, col['rally_key'] + 1).setValue(newKey);
+        keyMap[oldKey] = newKey;
+        if (oldKey === newRallyKey) {
+          updatedRallyKey = newKey;
         }
         seq++;
+      }
+    }
+    // line2のrally_keyも更新
+    for (var k = 0; k < newData.length; k++) {
+      if (parseInt(newData[k][col['set']]) === setNumber && parseInt(newData[k][col['line_index']]) === 2) {
+        var oldKey2 = newData[k][col['rally_key']] ? newData[k][col['rally_key']].toString() : '';
+        if (keyMap[oldKey2]) {
+          sheet.getRange(k + 2, col['rally_key'] + 1).setValue(keyMap[oldKey2]);
+        }
       }
     }
     
