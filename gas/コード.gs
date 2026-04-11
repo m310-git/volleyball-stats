@@ -1,7 +1,9 @@
 // === 定数 ===
 var SHEET_NAME_DATA = '生データ';
 var SHEET_NAME_SETTINGS = '設定';
+var SHEET_NAME_AI_PROPOSALS = 'AI提案';
 var COLUMN_COUNT = 20;
+var AI_COLUMN_COUNT = 43;
 var ROTATION_COUNT = 6;
 var MAX_MATCHES = 3;
 var NOTION_API_VERSION = '2022-06-28';
@@ -25,8 +27,20 @@ function getSettingsSheet() {
   return ss.getSheetByName(SHEET_NAME_SETTINGS);
 }
 
+function getAIProposalsSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ss.getSheetByName(SHEET_NAME_AI_PROPOSALS);
+}
+
 function getColumnMapping(sheet) {
   var headers = sheet.getRange(1, 1, 1, COLUMN_COUNT).getValues()[0];
+  var col = {};
+  headers.forEach(function(h, i) { col[h.toString().trim()] = i; });
+  return col;
+}
+
+function getAIColumnMapping(sheet) {
+  var headers = sheet.getRange(1, 1, 1, AI_COLUMN_COUNT).getValues()[0];
   var col = {};
   headers.forEach(function(h, i) { col[h.toString().trim()] = i; });
   return col;
@@ -191,6 +205,139 @@ function manualUpdateNotion() {
   } catch (e) {
     return { success: false, message: e.message };
   }
+}
+
+// === AI提案系関数（フェーズ1: 読み取り系） ===
+
+/**
+ * AI提案データを取得（指定セット）
+ * @param {number} setNumber - セット番号
+ * @return {Object} { success: boolean, rallies: array, error: string }
+ */
+function getAIProposals(setNumber) {
+  var sheet = getAIProposalsSheet();
+  if (!sheet) {
+    return { success: false, error: 'AI提案シートがありません。先にColabを実行してください。', rallies: [] };
+  }
+  
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    return { success: true, rallies: [] };
+  }
+  
+  var col = getAIColumnMapping(sheet);
+  var data = sheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
+  
+  // 指定セットでフィルタ
+  var filtered = data.filter(function(row) {
+    var setVal = row[col['set']];
+    return setVal === setNumber || parseInt(setVal) === setNumber;
+  });
+  
+  // オブジェクト配列に変換
+  var rallies = filtered.map(function(row) {
+    return {
+      status: row[col['status']] ? row[col['status']].toString() : '',
+      rally_key: row[col['rally_key']] ? row[col['rally_key']].toString() : '',
+      line_index: parseInt(row[col['line_index']]) || 1,
+      rally_seq: parseInt(row[col['rally_seq']]) || 0,
+      is_two_line: row[col['is_two_line']] ? row[col['is_two_line']].toString() : 'FALSE',
+      source_file: row[col['source_file']] ? row[col['source_file']].toString() : '',
+      drive_file_id: row[col['drive_file_id']] ? row[col['drive_file_id']].toString() : '',
+      confidence: parseFloat(row[col['confidence']]) || 0,
+      rally_start_sec: parseFloat(row[col['rally_start_sec']]) || 0,
+      rally_end_sec: parseFloat(row[col['rally_end_sec']]) || 0,
+      date: row[col['date']] ? row[col['date']].toString() : '',
+      opponent: row[col['opponent']] ? row[col['opponent']].toString() : '',
+      set: parseInt(row[col['set']]) || 1,
+      score_us: parseInt(row[col['score_us']]) || 0,
+      score_them: parseInt(row[col['score_them']]) || 0,
+      point_team: row[col['point_team']] ? row[col['point_team']].toString() : '',
+      serve_team: row[col['serve_team']] ? row[col['serve_team']].toString() : '',
+      rotation: parseInt(row[col['rotation']]) || 1,
+      deciding_team: row[col['deciding_team']] ? row[col['deciding_team']].toString() : '',
+      receive_grade: row[col['receive_grade']] ? row[col['receive_grade']].toString() : '',
+      receiver: row[col['receiver']] ? row[col['receiver']].toString() : '',
+      team: row[col['team']] ? row[col['team']].toString() : '',
+      player: row[col['player']] ? row[col['player']].toString() : '',
+      play_type: row[col['play_type']] ? row[col['play_type']].toString() : '',
+      result: row[col['result']] ? row[col['result']].toString() : '',
+      result_detail: row[col['result_detail']] ? row[col['result_detail']].toString() : '',
+      attack_type: row[col['attack_type']] ? row[col['attack_type']].toString() : '',
+      blocker_count: row[col['blocker_count']] ? row[col['blocker_count']].toString() : '',
+      zone_from: row[col['zone_from']] ? row[col['zone_from']].toString() : '',
+      zone_to: row[col['zone_to']] ? row[col['zone_to']].toString() : '',
+      note: row[col['note']] ? row[col['note']].toString() : '',
+      ai_note: row[col['ai_note']] ? row[col['ai_note']].toString() : '',
+      field_confidences: row[col['field_confidences']] ? row[col['field_confidences']].toString() : '',
+      original_payload: row[col['original_payload']] ? row[col['original_payload']].toString() : '',
+      final_payload: row[col['final_payload']] ? row[col['final_payload']].toString() : '',
+      human_modified: row[col['human_modified']] ? row[col['human_modified']].toString() : '',
+      match_id: row[col['match_id']] ? row[col['match_id']].toString() : '',
+      analysis_run_id: row[col['analysis_run_id']] ? row[col['analysis_run_id']].toString() : '',
+      prompt_version: row[col['prompt_version']] ? row[col['prompt_version']].toString() : '',
+      approved_at: row[col['approved_at']] ? row[col['approved_at']].toString() : '',
+      initial_serve_team: row[col['initial_serve_team']] ? row[col['initial_serve_team']].toString() : '',
+      initial_rotation: parseInt(row[col['initial_rotation']]) || 1,
+      approved_by: row[col['approved_by']] ? row[col['approved_by']].toString() : ''
+    };
+  });
+  
+  return { success: true, rallies: rallies };
+}
+
+/**
+ * AI提案サマリーを取得（全セット）
+ * @return {Object} { success: boolean, summary: array, error: string }
+ */
+function getAIProposalSummary() {
+  var sheet = getAIProposalsSheet();
+  if (!sheet) {
+    return { success: false, error: 'AI提案シートがありません。先にColabを実行してください。', summary: [] };
+  }
+  
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    return { success: true, summary: [] };
+  }
+  
+  var col = getAIColumnMapping(sheet);
+  var data = sheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
+  
+  // セットごとの集計
+  var summaryBySet = {};
+  data.forEach(function(row) {
+    var setVal = parseInt(row[col['set']]) || 1;
+    var status = row[col['status']] ? row[col['status']].toString() : '';
+    
+    if (!summaryBySet[setVal]) {
+      summaryBySet[setVal] = {
+        set: setVal,
+        total: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+        error: 0,
+        approved: 0,
+        committed: 0
+      };
+    }
+    
+    summaryBySet[setVal].total++;
+    if (status === 'HIGH') summaryBySet[setVal].high++;
+    else if (status === 'MEDIUM') summaryBySet[setVal].medium++;
+    else if (status === 'LOW') summaryBySet[setVal].low++;
+    else if (status === 'ERROR') summaryBySet[setVal].error++;
+    else if (status === 'APPROVED') summaryBySet[setVal].approved++;
+    else if (status === 'COMMITTED') summaryBySet[setVal].committed++;
+  });
+  
+  // 配列に変換
+  var summary = Object.keys(summaryBySet).map(function(key) {
+    return summaryBySet[key];
+  }).sort(function(a, b) { return a.set - b.set; });
+  
+  return { success: true, summary: summary };
 }
 
 // === Notion設定 ===
