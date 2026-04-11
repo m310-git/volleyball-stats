@@ -370,79 +370,142 @@ function approveProposal(rallyKey, modifiedData) {
     var col = getAIColumnMapping(sheet);
     var data = sheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
     
-    // rally_keyで検索
-    var rowIndex = -1;
+    // rally_keyで検索（2行ペアも含める）
+    var rowIndices = [];
     for (var i = 0; i < data.length; i++) {
       if (data[i][col['rally_key']] && data[i][col['rally_key']].toString() === rallyKey) {
-        rowIndex = i + 2; // 1-indexed (ヘッダー行+1)
-        break;
+        rowIndices.push(i + 2); // 1-indexed
       }
     }
     
-    if (rowIndex === -1) {
+    if (rowIndices.length === 0) {
       return { success: false, error: 'rally_keyが見つかりません: ' + rallyKey };
     }
     
-    var row = data[rowIndex - 2];
-    var status = row[col['status']] ? row[col['status']].toString() : '';
-    
-    // COMMITTEDは変更不可
-    if (status === 'COMMITTED') {
-      return { success: false, error: 'COMMITTEDは変更できません' };
+    var line1Index = -1;
+    var line2Index = -1;
+    for (var j = 0; j < rowIndices.length; j++) {
+      var row = data[rowIndices[j] - 2];
+      var lineIndex = parseInt(row[col['line_index']]) || 1;
+      var status = row[col['status']] ? row[col['status']].toString() : '';
+      
+      if (status === 'COMMITTED') {
+        return { success: false, error: 'COMMITTEDは変更できません' };
+      }
+      
+      if (lineIndex === 1) {
+        line1Index = rowIndices[j];
+      } else if (lineIndex === 2) {
+        line2Index = rowIndices[j];
+      }
     }
     
-    // 修正データのマージ
-    var updatedRow = row.slice();
+    if (line1Index === -1) {
+      return { success: false, error: 'line_index=1が見つかりません' };
+    }
+    
+    var row1 = data[line1Index - 2];
+    var row2 = line2Index !== -1 ? data[line2Index - 2] : null;
+    var isTwoLine = row1[col['is_two_line']] ? row1[col['is_two_line']].toString() : 'FALSE';
+    
+    // 修正データのマージと構造変更バリデーション
+    var updatedRow1 = row1.slice();
+    var updatedRow2 = row2 ? row2.slice() : null;
+    var modifiedFields = [];
+    
     if (modifiedData) {
-      // point_teamが変更された場合、派生値再計算が必要
-      var pointTeamChanged = modifiedData.point_team && modifiedData.point_team !== row[col['point_team']];
-      
-      // 更新可能なフィールドのみ
-      var updateFields = ['point_team', 'serve_team', 'rotation', 'deciding_team', 
-                          'receive_grade', 'receiver', 'team', 'player', 'play_type',
-                          'result', 'result_detail', 'attack_type', 'blocker_count',
+      // 更新可能なフィールド（派生値を除く）
+      var updateFields = ['point_team', 'deciding_team', 'receive_grade', 'receiver', 'player', 
+                          'play_type', 'result_detail', 'attack_type', 'blocker_count',
                           'zone_from', 'zone_to', 'note'];
       
       updateFields.forEach(function(field) {
         if (modifiedData[field] !== undefined && modifiedData[field] !== null) {
-          updatedRow[col[field]] = modifiedData[field];
+          var oldValue = row1[col[field]] ? row1[col[field]].toString() : '';
+          var newValue = modifiedData[field] ? modifiedData[field].toString() : '';
+          
+          // 正規化ルール適用（null系統一、trim）
+          if (!oldValue || oldValue === 'null' || oldValue === 'None' || oldValue.trim() === '') oldValue = '';
+          else oldValue = oldValue.trim();
+          if (!newValue || newValue === 'null' || newValue === 'None' || newValue.trim() === '') newValue = '';
+          else newValue = newValue.trim();
+          
+          if (oldValue !== newValue) {
+            modifiedFields.push(field);
+            updatedRow1[col[field]] = modifiedData[field];
+          }
         }
       });
       
-      // human_modifiedをTRUE
-      updatedRow[col['human_modified']] = 'TRUE';
+      // 構造変更バリデーション（設計書§8.2ステップ4）
+      var newPointTeam = updatedRow1[col['point_team']] ? updatedRow1[col['point_team']].toString() : '';
+      var newDecidingTeam = updatedRow1[col['deciding_team']] ? updatedRow1[col['deciding_team']].toString() : '';
+      var newPlayType = updatedRow1[col['play_type']] ? updatedRow1[col['play_type']].toString() : '';
       
-      // final_payloadを更新（JSON文字列化）
-      modifiedData.human_modified = 'TRUE';
-      updatedRow[col['final_payload']] = JSON.stringify(modifiedData);
+      // 2行記録条件: point_team=相手名, deciding_team=相手名, play_type=スパイク/フェイント/プッシュ
+      var opponent = row1[col['opponent']] ? row1[col['opponent']].toString() : '';
+      var shouldBeTwoLine = (newPointTeam === opponent && newDecidingTeam === opponent && 
+                             ['スパイク', 'フェイント', 'プッシュ'].indexOf(newPlayType) >= 0);
+      
+      if (shouldBeTwoLine !== (isTwoLine === 'TRUE')) {
+        return { success: false, error: '構造変更は未対応です。削除して再追加してください。' };
+      }
       
       // point_team変更時は派生値再計算
+      var pointTeamChanged = modifiedFields.indexOf('point_team') >= 0;
       if (pointTeamChanged) {
-        var setNumber = parseInt(updatedRow[col['set']]) || 1;
+        var setNumber = parseInt(updatedRow1[col['set']]) || 1;
         _recalcDerivedValuesInternal(setNumber);
+        // 再計算後のデータを再取得
+        data = sheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
+        updatedRow1 = data[line1Index - 2].slice();
+        if (line2Index !== -1) {
+          updatedRow2 = data[line2Index - 2].slice();
+        }
       }
     }
     
-    // statusをAPPROVEDに
-    updatedRow[col['status']] = 'APPROVED';
-    
-    // approved_at, approved_byを設定
-    updatedRow[col['approved_at']] = new Date().toISOString();
-    updatedRow[col['approved_by']] = Session.getActiveUser().getEmail();
-    
-    // line_index=2の場合、payload関連フィールドは空のまま
-    if (parseInt(updatedRow[col['line_index']]) === 2) {
-      updatedRow[col['original_payload']] = '';
-      updatedRow[col['final_payload']] = '';
-      updatedRow[col['human_modified']] = '';
-      updatedRow[col['approved_at']] = '';
-      updatedRow[col['approved_by']] = '';
+    // ステータスAPPROVEDに（2行ペアとも）
+    updatedRow1[col['status']] = 'APPROVED';
+    if (updatedRow2) {
+      updatedRow2[col['status']] = 'APPROVED';
     }
     
-    // 更新
-    sheet.getRange(rowIndex, 1, 1, AI_COLUMN_COUNT).setValues([updatedRow]);
+    // approved_at, approved_byを設定（line1のみ）
+    updatedRow1[col['approved_at']] = new Date().toISOString();
+    try {
+      updatedRow1[col['approved_by']] = Session.getActiveUser().getEmail();
+    } catch (e) {
+      updatedRow1[col['approved_by']] = '';
+    }
     
-    return { success: true };
+    // canonical JSONをfinal_payloadに保存（line1のみ）
+    var canonical = _buildCanonicalJSON(updatedRow1, col, isTwoLine === 'TRUE', updatedRow2);
+    updatedRow1[col['final_payload']] = canonical;
+    
+    // human_modifiedに修正項目名を記録（line1のみ。派生値含めない）
+    if (modifiedFields.length > 0) {
+      updatedRow1[col['human_modified']] = modifiedFields.join(',');
+    } else {
+      updatedRow1[col['human_modified']] = '';
+    }
+    
+    // line_index=2の場合、payload関連フィールドは空のまま
+    if (updatedRow2) {
+      updatedRow2[col['original_payload']] = '';
+      updatedRow2[col['final_payload']] = '';
+      updatedRow2[col['human_modified']] = '';
+      updatedRow2[col['approved_at']] = '';
+      updatedRow2[col['approved_by']] = '';
+    }
+    
+    // 更新（バッチ）
+    sheet.getRange(line1Index, 1, 1, AI_COLUMN_COUNT).setValues([updatedRow1]);
+    if (line2Index !== -1 && updatedRow2) {
+      sheet.getRange(line2Index, 1, 1, AI_COLUMN_COUNT).setValues([updatedRow2]);
+    }
+    
+    return { success: true, modifiedFields: modifiedFields };
     
   } catch (e) {
     return { success: false, error: e.message };
@@ -481,19 +544,60 @@ function bulkApproveHighConfidence(setNumber) {
     var approvedCount = 0;
     var rowsToUpdate = [];
     
-    // 指定セットのHIGH/MEDIUMをAPPROVEDに
+    // 指定セットのHIGHをAPPROVEDに（line_index=1のみ）
+    var highRallyKeys = [];
     for (var i = 0; i < data.length; i++) {
       var setVal = parseInt(data[i][col['set']]) || 1;
       var status = data[i][col['status']] ? data[i][col['status']].toString() : '';
+      var lineIndex = parseInt(data[i][col['line_index']]) || 1;
       
-      if (setVal === setNumber && (status === 'HIGH' || status === 'MEDIUM')) {
-        var updatedRow = data[i].slice();
-        updatedRow[col['status']] = 'APPROVED';
-        updatedRow[col['approved_at']] = new Date().toISOString();
-        updatedRow[col['approved_by']] = Session.getActiveUser().getEmail();
-        rowsToUpdate.push({ row: i + 2, data: updatedRow });
-        approvedCount++;
+      if (setVal === setNumber && status === 'HIGH' && lineIndex === 1) {
+        highRallyKeys.push({ key: data[i][col['rally_key']].toString(), index: i });
       }
+    }
+    
+    // 2行ペアをまとめて処理
+    for (var j = 0; j < highRallyKeys.length; j++) {
+      var rallyKey = highRallyKeys[j].key;
+      var line1Index = highRallyKeys[j].index;
+      var line2Index = -1;
+      
+      // 2行目を検索
+      for (var k = 0; k < data.length; k++) {
+        if (data[k][col['rally_key']] && data[k][col['rally_key']].toString() === rallyKey &&
+            parseInt(data[k][col['line_index']]) === 2) {
+          line2Index = k;
+          break;
+        }
+      }
+      
+      var row1 = data[line1Index].slice();
+      var row2 = line2Index !== -1 ? data[line2Index].slice() : null;
+      var isTwoLine = row1[col['is_two_line']] ? row1[col['is_two_line']].toString() : 'FALSE';
+      
+      // ステータスAPPROVED
+      row1[col['status']] = 'APPROVED';
+      row1[col['approved_at']] = new Date().toISOString();
+      try {
+        row1[col['approved_by']] = Session.getActiveUser().getEmail();
+      } catch (e) {
+        row1[col['approved_by']] = '';
+      }
+      
+      // canonical JSONをfinal_payloadに保存（line1のみ）
+      var canonical = _buildCanonicalJSON(row1, col, isTwoLine === 'TRUE', row2);
+      row1[col['final_payload']] = canonical;
+      row1[col['human_modified']] = ''; // 一括承認は空文字列
+      
+      rowsToUpdate.push({ row: line1Index + 2, data: row1 });
+      
+      // 2行目も更新
+      if (row2) {
+        row2[col['status']] = 'APPROVED';
+        rowsToUpdate.push({ row: line2Index + 2, data: row2 });
+      }
+      
+      approvedCount++;
     }
     
     // バッチ更新
@@ -567,7 +671,7 @@ function _recalcDerivedValuesInternal(setNumber) {
     // スコア更新
     if (pointTeam === '自チーム') {
       scoreUs++;
-    } else if (pointTeam === '相手') {
+    } else if (pointTeam === opponent) {
       scoreThem++;
     }
     
@@ -579,7 +683,7 @@ function _recalcDerivedValuesInternal(setNumber) {
         rotation = (rotation % 6) + 1;
       }
       // 相手得点 かつ serve_team==自チーム → serve_team=相手チーム名
-      else if (pointTeam === '相手' && serveTeam === '自チーム') {
+      else if (pointTeam === opponent && serveTeam === '自チーム') {
         serveTeam = opponent;
       }
     }
@@ -588,21 +692,30 @@ function _recalcDerivedValuesInternal(setNumber) {
     var decidingTeam = row[col['deciding_team']] ? row[col['deciding_team']].toString() : '';
     var team = '';
     var result = '';
-    if (decidingTeam === '自チーム') {
-      if (pointTeam === '自チーム') {
-        team = '自チーム';
-        result = '得点';
-      } else {
-        team = '自チーム';
-        result = 'ミス';
-      }
+    var isTwoLine = row[col['is_two_line']] ? row[col['is_two_line']].toString() : 'FALSE';
+    
+    if (isTwoLine === 'TRUE') {
+      // 2行記録: line1は自チーム/ミス、line2は相手名/得点（設計書§6.1.3）
+      team = '自チーム';
+      result = 'ミス';
     } else {
-      if (pointTeam === '相手') {
-        team = opponent;
-        result = '得点';
+      // 1行記録
+      if (decidingTeam === '自チーム') {
+        if (pointTeam === '自チーム') {
+          team = '自チーム';
+          result = '得点';
+        } else {
+          team = '自チーム';
+          result = 'ミス';
+        }
       } else {
-        team = opponent;
-        result = 'ミス';
+        if (pointTeam === opponent) {
+          team = opponent;
+          result = '得点';
+        } else {
+          team = opponent;
+          result = 'ミス';
+        }
       }
     }
     
@@ -630,8 +743,9 @@ function _recalcDerivedValuesInternal(setNumber) {
           updatedRow2[col['score_them']] = scoreThem;
           updatedRow2[col['serve_team']] = serveTeam;
           updatedRow2[col['rotation']] = rotation;
-          updatedRow2[col['team']] = team;
-          updatedRow2[col['result']] = result;
+          // 2行目はteam=相手名, result=得点に固定（設計書§6.1.3）
+          updatedRow2[col['team']] = opponent;
+          updatedRow2[col['result']] = '得点';
           rowsToUpdate.push(updatedRow2);
           break;
         }
@@ -773,7 +887,7 @@ function insertRally(afterRallyKey, rallyData) {
     // 行作成
     var newRow = new Array(AI_COLUMN_COUNT);
     newRow.fill('');
-    newRow[col['status']] = 'PENDING';
+    newRow[col['status']] = 'APPROVED'; // 手動追加は承認済み
     newRow[col['rally_key']] = newRallyKey;
     newRow[col['line_index']] = 1;
     newRow[col['is_two_line']] = 'FALSE';
@@ -795,6 +909,12 @@ function insertRally(afterRallyKey, rallyData) {
     newRow[col['note']] = rallyData.note || '';
     newRow[col['ai_note']] = '手動追加';
     newRow[col['human_modified']] = 'TRUE';
+    newRow[col['approved_at']] = new Date().toISOString(); // 承認日時を設定
+    try {
+      newRow[col['approved_by']] = Session.getActiveUser().getEmail(); // 承認者を設定
+    } catch (e) {
+      newRow[col['approved_by']] = '';
+    }
     newRow[col['initial_serve_team']] = rallyData.initial_serve_team || '';
     newRow[col['initial_rotation']] = rallyData.initial_rotation || 1;
     
@@ -890,6 +1010,19 @@ function commitToRawData(setNumber) {
       return setVal === setNumber && status === 'APPROVED' && lineIndex === 1;
     });
     
+    // 未承認データが存在する場合はエラー
+    var hasUnapproved = aiData.some(function(row) {
+      var setVal = parseInt(row[aiCol['set']]) || 1;
+      var status = row[aiCol['status']] ? row[aiCol['status']].toString() : '';
+      var lineIndex = parseInt(row[aiCol['line_index']]) || 1;
+      return setVal === setNumber && lineIndex === 1 && 
+             (status === 'HIGH' || status === 'MEDIUM' || status === 'LOW' || status === 'ERROR' || status === 'PENDING');
+    });
+    
+    if (hasUnapproved) {
+      return { success: false, committed: 0, error: '未承認の提案が存在します。先に承認してください。' };
+    }
+    
     if (toCommit.length === 0) {
       return { success: true, committed: 0 };
     }
@@ -900,10 +1033,13 @@ function commitToRawData(setNumber) {
     if (dataLastRow > 1) {
       var existingData = dataSheet.getRange(2, 1, dataLastRow - 1, COLUMN_COUNT).getValues();
       existingData.forEach(function(row) {
+        // 重複キーを date_set_scoreUs_scoreThem_team_result に修正（設計書§8.2ステップ5）
         var key = (row[dataCol['date']] || '') + '_' + 
                   (row[dataCol['set']] || '') + '_' + 
                   (row[dataCol['score_us']] || '') + '_' + 
-                  (row[dataCol['score_them']] || '');
+                  (row[dataCol['score_them']] || '') + '_' +
+                  (row[dataCol['team']] || '') + '_' +
+                  (row[dataCol['result']] || '');
         existingKeys[key] = true;
       });
     }
@@ -931,6 +1067,9 @@ function commitToRawData(setNumber) {
     var rowsToAppend = [];
     
     toCommit.forEach(function(aiRow) {
+      var isTwoLine = aiRow[aiCol['is_two_line']] ? aiRow[aiCol['is_two_line']].toString() : 'FALSE';
+      
+      // line1のデータを作成
       var rowData = {
         date: aiRow[aiCol['date']] ? aiRow[aiCol['date']].toString() : '',
         opponent: aiRow[aiCol['opponent']] ? aiRow[aiCol['opponent']].toString() : '',
@@ -954,8 +1093,8 @@ function commitToRawData(setNumber) {
         note: aiRow[aiCol['note']] ? aiRow[aiCol['note']].toString() : ''
       };
       
-      // 重複チェック
-      var key = rowData.date + '_' + rowData.set + '_' + rowData.scoreUs + '_' + rowData.scoreThem;
+      // 重複チェック（date_set_scoreUs_scoreThem_team_result）
+      var key = rowData.date + '_' + rowData.set + '_' + rowData.scoreUs + '_' + rowData.scoreThem + '_' + rowData.team + '_' + rowData.result;
       if (existingKeys[key]) {
         return; // 重複はスキップ
       }
@@ -963,6 +1102,47 @@ function commitToRawData(setNumber) {
       rowsToAppend.push(rowData);
       existingKeys[key] = true;
       committedCount++;
+      
+      // 2行記録の場合、line2も転記
+      if (isTwoLine === 'TRUE') {
+        var rallyKey = aiRow[aiCol['rally_key']] ? aiRow[aiCol['rally_key']].toString() : '';
+        for (var i = 0; i < aiData.length; i++) {
+          if (aiData[i][aiCol['rally_key']] && aiData[i][aiCol['rally_key']].toString() === rallyKey &&
+              parseInt(aiData[i][aiCol['line_index']]) === 2) {
+            var aiRow2 = aiData[i];
+            var rowData2 = {
+              date: aiRow2[aiCol['date']] ? aiRow2[aiCol['date']].toString() : '',
+              opponent: aiRow2[aiCol['opponent']] ? aiRow2[aiCol['opponent']].toString() : '',
+              set: parseInt(aiRow2[aiCol['set']]) || 1,
+              scoreUs: parseInt(aiRow2[aiCol['score_us']]) || 0,
+              scoreThem: parseInt(aiRow2[aiCol['score_them']]) || 0,
+              pointTeam: aiRow2[aiCol['point_team']] ? aiRow2[aiCol['point_team']].toString() : '',
+              serveTeam: aiRow2[aiCol['serve_team']] ? aiRow2[aiCol['serve_team']].toString() : '',
+              rotation: parseInt(aiRow2[aiCol['rotation']]) || 1,
+              receiveGrade: aiRow2[aiCol['receive_grade']] ? aiRow2[aiCol['receive_grade']].toString() : '',
+              receiver: aiRow2[aiCol['receiver']] ? aiRow2[aiCol['receiver']].toString() : '',
+              team: aiRow2[aiCol['team']] ? aiRow2[aiCol['team']].toString() : '',
+              player: aiRow2[aiCol['player']] ? aiRow2[aiCol['player']].toString() : '',
+              playType: aiRow2[aiCol['play_type']] ? aiRow2[aiCol['play_type']].toString() : '',
+              result: aiRow2[aiCol['result']] ? aiRow2[aiCol['result']].toString() : '',
+              resultDetail: aiRow2[aiCol['result_detail']] ? aiRow2[aiCol['result_detail']].toString() : '',
+              attackType: aiRow2[aiCol['attack_type']] ? aiRow2[aiCol['attack_type']].toString() : '',
+              blockerCount: aiRow2[aiCol['blocker_count']] ? aiRow2[aiCol['blocker_count']].toString() : '',
+              zoneFrom: aiRow2[aiCol['zone_from']] ? aiRow2[aiCol['zone_from']].toString() : '',
+              zoneTo: aiRow2[aiCol['zone_to']] ? aiRow2[aiCol['zone_to']].toString() : '',
+              note: aiRow2[aiCol['note']] ? aiRow2[aiCol['note']].toString() : ''
+            };
+            
+            var key2 = rowData2.date + '_' + rowData2.set + '_' + rowData2.scoreUs + '_' + rowData2.scoreThem + '_' + rowData2.team + '_' + rowData2.result;
+            if (!existingKeys[key2]) {
+              rowsToAppend.push(rowData2);
+              existingKeys[key2] = true;
+              committedCount++;
+            }
+            break;
+          }
+        }
+      }
     });
     
     // バッチ追記
