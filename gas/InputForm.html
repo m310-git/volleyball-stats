@@ -914,27 +914,76 @@ function renderRallyCards(rallies){
     return;
   }
   
+  // rally_key単位でグルーピング（設計書§8.4）
+  var grouped={};
   rallies.forEach(function(r){
-    if(r.line_index!==1)return; // line_index=1のみ表示
+    if(!grouped[r.rally_key]){
+      grouped[r.rally_key]={line1:null,line2:null};
+    }
+    if(r.line_index===1){
+      grouped[r.rally_key].line1=r;
+    }else if(r.line_index===2){
+      grouped[r.rally_key].line2=r;
+    }
+  });
+  
+  // グループ化したデータをrally_seq順にソート
+  var sortedKeys=Object.keys(grouped).sort(function(a,b){
+    return grouped[a].line1.rally_seq-grouped[b].line1.rally_seq;
+  });
+  
+  sortedKeys.forEach(function(key){
+    var group=grouped[key];
+    var r=group.line1; // line_index=1を基準に表示
     
-    var statusColor=r.status==='HIGH'?'#4CAF50':r.status==='MEDIUM'?'#FF9800':r.status==='LOW'?'#f44336':'#999';
-    var statusLabel=r.status==='HIGH'?'🟢高確信':r.status==='MEDIUM'?'🟡要確認':r.status==='LOW'?'🔴低確信':r.status;
+    var statusColor=r.status==='HIGH'?'#4CAF50':r.status==='MEDIUM'?'#FF9800':r.status==='LOW'?'#f44336':r.status==='APPROVED'?'#2196F3':r.status==='COMMITTED'?'#9E9E9E':'#999';
+    var statusLabel=r.status==='HIGH'?'🟢高確信':r.status==='MEDIUM'?'🟡要確認':r.status==='LOW'?'🔴低確信':r.status==='APPROVED'?'✅承認済':r.status==='COMMITTED'?'📝転記済':r.status;
     
     var card=document.createElement('div');
     card.style.cssText='background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px;margin-bottom:8px';
-    card.innerHTML=
+    
+    var html=
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'+
         '<span style="font-size:9px;color:'+statusColor+';font-weight:bold">'+statusLabel+'</span>'+
         '<span style="font-size:9px;color:#666">確信度:'+(r.confidence*100).toFixed(0)+'%</span>'+
-      '</div>'+
-      '<div style="font-size:11px">'+
-        '<strong>得点:</strong> '+r.point_team+' | '+
-        '<strong>プレー:</strong> '+r.play_type+' '+r.player+
-      '</div>'+
-      '<div style="margin-top:5px">'+
-        '<button onclick="approveSingle(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer">✅ 承認</button>'+
-        '<button onclick="skipRally(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#999;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:4px">⏭ スキップ</button>'+
       '</div>';
+    
+    // 2行記録の場合はline1とline2を並列表示
+    if(group.line2){
+      html+=
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:5px">'+
+          '<div style="background:#f5f5f5;padding:6px;border-radius:4px">'+
+            '<div style="font-size:9px;color:#666;margin-bottom:2px">Line 1 (自チーム守備)</div>'+
+            '<div style="font-size:10px"><strong>team:</strong> '+r.team+' | <strong>result:</strong> '+r.result+'</div>'+
+            '<div style="font-size:10px"><strong>play_type:</strong> '+r.play_type+'</div>'+
+          '</div>'+
+          '<div style="background:#e3f2fd;padding:6px;border-radius:4px">'+
+            '<div style="font-size:9px;color:#666;margin-bottom:2px">Line 2 (相手攻撃)</div>'+
+            '<div style="font-size:10px"><strong>team:</strong> '+group.line2.team+' | <strong>result:</strong> '+group.line2.result+'</div>'+
+            '<div style="font-size:10px"><strong>play_type:</strong> '+group.line2.play_type+' <strong>player:</strong> '+group.line2.player+'</div>'+
+          '</div>'+
+        '</div>';
+    }else{
+      // 1行記録
+      html+=
+        '<div style="font-size:11px">'+
+          '<strong>得点:</strong> '+r.point_team+' | '+
+          '<strong>プレー:</strong> '+r.play_type+' '+r.player+
+        '</div>';
+    }
+    
+    html+='<div style="margin-top:5px">';
+    
+    // APPROVED/COMMITTED以外は操作ボタンを表示
+    if(r.status!=='APPROVED' && r.status!=='COMMITTED'){
+      html+=
+        '<button onclick="approveSingle(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer">✅ 承認</button>'+
+        '<button onclick="skipRally(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#999;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:4px">⏭ スキップ</button>';
+    }
+    
+    html+='</div>';
+    
+    card.innerHTML=html;
     container.appendChild(card);
   });
 }
