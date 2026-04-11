@@ -847,6 +847,195 @@ function recalcDerivedValues(setNumber) {
   }
 }
 
+// === AI提案系関数（フェーズ4: 確定系） ===
+
+/**
+ * 生データへ転記
+ * @param {number} setNumber - セット番号
+ * @return {Object} { success: boolean, committed: number, error: string }
+ */
+function commitToRawData(setNumber) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, committed: 0, error: 'ロック取得失敗: ' + e.message };
+  }
+  
+  try {
+    var aiSheet = getAIProposalsSheet();
+    var dataSheet = getDataSheet();
+    
+    if (!aiSheet) {
+      return { success: false, committed: 0, error: 'AI提案シートがありません' };
+    }
+    if (!dataSheet) {
+      return { success: false, committed: 0, error: '生データシートがありません' };
+    }
+    
+    var lastRow = aiSheet.getLastRow();
+    if (lastRow <= 1) {
+      return { success: true, committed: 0 };
+    }
+    
+    var aiCol = getAIColumnMapping(aiSheet);
+    var dataCol = getColumnMapping(dataSheet);
+    var aiData = aiSheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
+    
+    // 指定セットのAPPROVED行をフィルタ（line_index=1のみ）
+    var toCommit = aiData.filter(function(row) {
+      var setVal = parseInt(row[aiCol['set']]) || 1;
+      var status = row[aiCol['status']] ? row[aiCol['status']].toString() : '';
+      var lineIndex = parseInt(row[aiCol['line_index']]) || 1;
+      return setVal === setNumber && status === 'APPROVED' && lineIndex === 1;
+    });
+    
+    if (toCommit.length === 0) {
+      return { success: true, committed: 0 };
+    }
+    
+    // 生データシートの既存データを取得（重複チェック用）
+    var dataLastRow = dataSheet.getLastRow();
+    var existingKeys = {};
+    if (dataLastRow > 1) {
+      var existingData = dataSheet.getRange(2, 1, dataLastRow - 1, COLUMN_COUNT).getValues();
+      existingData.forEach(function(row) {
+        var key = (row[dataCol['date']] || '') + '_' + 
+                  (row[dataCol['set']] || '') + '_' + 
+                  (row[dataCol['score_us']] || '') + '_' + 
+                  (row[dataCol['score_them']] || '');
+        existingKeys[key] = true;
+      });
+    }
+    
+    // 派生値再計算
+    _recalcDerivedValuesInternal(setNumber);
+    
+    // 最新のAIデータを再取得
+    aiData = aiSheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
+    toCommit = aiData.filter(function(row) {
+      var setVal = parseInt(row[aiCol['set']]) || 1;
+      var status = row[aiCol['status']] ? row[aiCol['status']].toString() : '';
+      var lineIndex = parseInt(row[aiCol['line_index']]) || 1;
+      return setVal === setNumber && status === 'APPROVED' && lineIndex === 1;
+    });
+    
+    // rally_seqでソート
+    toCommit.sort(function(a, b) {
+      var seqA = parseInt(a[aiCol['rally_seq']]) || 0;
+      var seqB = parseInt(b[aiCol['rally_seq']]) || 0;
+      return seqA - seqB;
+    });
+    
+    var committedCount = 0;
+    var rowsToAppend = [];
+    
+    toCommit.forEach(function(aiRow) {
+      var rowData = {
+        date: aiRow[aiCol['date']] ? aiRow[aiCol['date']].toString() : '',
+        opponent: aiRow[aiCol['opponent']] ? aiRow[aiCol['opponent']].toString() : '',
+        set: parseInt(aiRow[aiCol['set']]) || 1,
+        scoreUs: parseInt(aiRow[aiCol['score_us']]) || 0,
+        scoreThem: parseInt(aiRow[aiCol['score_them']]) || 0,
+        pointTeam: aiRow[aiCol['point_team']] ? aiRow[aiCol['point_team']].toString() : '',
+        serveTeam: aiRow[aiCol['serve_team']] ? aiRow[aiCol['serve_team']].toString() : '',
+        rotation: parseInt(aiRow[aiCol['rotation']]) || 1,
+        receiveGrade: aiRow[aiCol['receive_grade']] ? aiRow[aiCol['receive_grade']].toString() : '',
+        receiver: aiRow[aiCol['receiver']] ? aiRow[aiCol['receiver']].toString() : '',
+        team: aiRow[aiCol['team']] ? aiRow[aiCol['team']].toString() : '',
+        player: aiRow[aiCol['player']] ? aiRow[aiCol['player']].toString() : '',
+        playType: aiRow[aiCol['play_type']] ? aiRow[aiCol['play_type']].toString() : '',
+        result: aiRow[aiCol['result']] ? aiRow[aiCol['result']].toString() : '',
+        resultDetail: aiRow[aiCol['result_detail']] ? aiRow[aiCol['result_detail']].toString() : '',
+        attackType: aiRow[aiCol['attack_type']] ? aiRow[aiCol['attack_type']].toString() : '',
+        blockerCount: aiRow[aiCol['blocker_count']] ? aiRow[aiCol['blocker_count']].toString() : '',
+        zoneFrom: aiRow[aiCol['zone_from']] ? aiRow[aiCol['zone_from']].toString() : '',
+        zoneTo: aiRow[aiCol['zone_to']] ? aiRow[aiCol['zone_to']].toString() : '',
+        note: aiRow[aiCol['note']] ? aiRow[aiCol['note']].toString() : ''
+      };
+      
+      // 重複チェック
+      var key = rowData.date + '_' + rowData.set + '_' + rowData.scoreUs + '_' + rowData.scoreThem;
+      if (existingKeys[key]) {
+        return; // 重複はスキップ
+      }
+      
+      rowsToAppend.push(rowData);
+      existingKeys[key] = true;
+      committedCount++;
+    });
+    
+    // バッチ追記
+    if (rowsToAppend.length > 0) {
+      var appendData = rowsToAppend.map(function(d) {
+        return [
+          d.date,
+          d.opponent,
+          d.set,
+          d.scoreUs,
+          d.scoreThem,
+          d.pointTeam,
+          d.serveTeam,
+          d.rotation,
+          d.receiveGrade,
+          d.receiver,
+          d.team,
+          d.player,
+          d.playType,
+          d.result,
+          d.resultDetail,
+          d.attackType,
+          d.blockerCount,
+          d.zoneFrom,
+          d.zoneTo,
+          d.note
+        ];
+      });
+      dataSheet.getRange(dataSheet.getLastRow() + 1, 1, appendData.length, COLUMN_COUNT).setValues(appendData);
+    }
+    
+    // AI提案シートのステータスをCOMMITTEDに更新
+    var rowsToUpdate = [];
+    aiData.forEach(function(row, index) {
+      var setVal = parseInt(row[aiCol['set']]) || 1;
+      var status = row[aiCol['status']] ? row[aiCol['status']].toString() : '';
+      var lineIndex = parseInt(row[aiCol['line_index']]) || 1;
+      
+      if (setVal === setNumber && status === 'APPROVED' && lineIndex === 1) {
+        var updatedRow = row.slice();
+        updatedRow[aiCol['status']] = 'COMMITTED';
+        rowsToUpdate.push({ row: index + 2, data: updatedRow });
+        
+        // 2行記録も更新
+        var rallyKey = row[aiCol['rally_key']] ? row[aiCol['rally_key']].toString() : '';
+        var isTwoLine = row[aiCol['is_two_line']] ? row[aiCol['is_two_line']].toString() : 'FALSE';
+        if (isTwoLine === 'TRUE') {
+          for (var i = 0; i < aiData.length; i++) {
+            if (aiData[i][aiCol['rally_key']] && aiData[i][aiCol['rally_key']].toString() === rallyKey &&
+                parseInt(aiData[i][aiCol['line_index']]) === 2) {
+              var updatedRow2 = aiData[i].slice();
+              updatedRow2[aiCol['status']] = 'COMMITTED';
+              rowsToUpdate.push({ row: i + 2, data: updatedRow2 });
+              break;
+            }
+          }
+        }
+      }
+    });
+    
+    rowsToUpdate.forEach(function(item) {
+      aiSheet.getRange(item.row, 1, 1, AI_COLUMN_COUNT).setValues([item.data]);
+    });
+    
+    return { success: true, committed: committedCount };
+    
+  } catch (e) {
+    return { success: false, committed: 0, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // === Notion設定 ===
 function getNotionPageId() {
   var props = PropertiesService.getScriptProperties();
