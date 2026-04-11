@@ -895,12 +895,20 @@ function renderSetTabs(summary){
   });
 }
 
+// 設定シートのキャッシュ
+var reviewSettings={resultDetails:[],attackTypes:[],players:[]};
+
 function loadRallies(setNumber){
   showReviewFB('読み込み中...');
   
   ReviewState.setCurrentSet(setNumber);
   ReviewState.setLoading(true);
   document.getElementById('progressSummary').textContent='読み込み中...';
+
+  // 設定シートを取得
+  google.script.run.withSuccessHandler(function(s){
+    reviewSettings=s||{resultDetails:[],attackTypes:[],players:[]};
+  }).getSettings();
 
   google.script.run.withSuccessHandler(function(res){
     ReviewState.setLoading(false);
@@ -959,46 +967,73 @@ function renderRallyCards(rallies){
     var isHighConfidence=r.status==='HIGH';
     var folded=isHighConfidence?'display:none':'';
     
+    // スコア表示文字列を生成
+    var scoreLabel='#'+r.rally_seq+' ['+r.score_us+'-'+r.score_them+'] '+r.point_team;
+    var opponent=r.opponent||'';
+    var rk=r.rally_key;
+    var isEditable=r.status!=='COMMITTED';
+    var fid='card-'+rk.replace(/[^a-zA-Z0-9_]/g,'_');
+    
     var html=
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;cursor:pointer" onclick="toggleCard(this)">'+
         '<span style="font-size:9px;color:'+statusColor+';font-weight:bold">'+statusLabel+(isHighConfidence?' ▼':'')+'</span>'+
+        '<span style="font-size:10px;font-weight:bold">'+scoreLabel+'</span>'+
         '<span style="font-size:9px;color:#666">確信度:'+(r.confidence*100).toFixed(0)+'%</span>'+
       '</div>';
     
-    html+='<div style="'+folded+'">';
+    html+='<div id="'+fid+'" style="'+folded+'">';
     
-    // 2行記録の場合はline1とline2を並列表示
-    if(group.line2){
-      html+=
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:5px">'+
-          '<div style="background:#f5f5f5;padding:6px;border-radius:4px">'+
-            '<div style="font-size:9px;color:#666;margin-bottom:2px">Line 1 (自チーム守備)</div>'+
-            '<div style="font-size:10px"><strong>team:</strong> '+r.team+' | <strong>result:</strong> '+r.result+'</div>'+
-            '<div style="font-size:10px"><strong>play_type:</strong> '+r.play_type+'</div>'+
-          '</div>'+
-          '<div style="background:#e3f2fd;padding:6px;border-radius:4px">'+
-            '<div style="font-size:9px;color:#666;margin-bottom:2px">Line 2 (相手攻撃)</div>'+
-            '<div style="font-size:10px"><strong>team:</strong> '+group.line2.team+' | <strong>result:</strong> '+group.line2.result+'</div>'+
-            '<div style="font-size:10px"><strong>play_type:</strong> '+group.line2.play_type+' <strong>player:</strong> '+group.line2.player+'</div>'+
-          '</div>'+
-        '</div>';
-    }else{
-      // 1行記録
-      html+=
-        '<div style="font-size:11px">'+
-          '<strong>得点:</strong> '+r.point_team+' | '+
-          '<strong>プレー:</strong> '+r.play_type+' '+r.player+
-        '</div>';
+    // フィールド生成ヘルパー
+    function sel(field,label,opts,val){
+      if(!isEditable)return '<div style="font-size:10px"><strong>'+label+':</strong> '+(val||'-')+'</div>';
+      var h='<div style="margin-bottom:3px;font-size:10px;display:flex;align-items:center"><strong style="min-width:70px">'+label+':</strong>';
+      h+='<select data-field="'+field+'" style="font-size:10px;padding:1px 2px;flex:1">';
+      opts.forEach(function(o){var ov=o==='__OPP__'?opponent:o; h+='<option value="'+ov+'"'+(val===ov?' selected':'')+'>'+ov+'</option>';});
+      h+='</select></div>';return h;
     }
+    function txt(field,label,val){
+      if(!isEditable)return val?'<div style="font-size:10px"><strong>'+label+':</strong> '+val+'</div>':'';
+      var h='<div style="margin-bottom:3px;font-size:10px;display:flex;align-items:center"><strong style="min-width:70px">'+label+':</strong>';
+      h+='<input data-field="'+field+'" value="'+(val||'').toString().replace(/"/g,'&quot;')+'" style="font-size:10px;padding:1px 2px;flex:1;border:1px solid #ccc;border-radius:3px"></div>';return h;
+    }
+    
+    // フィールド表示（AI提案値がデフォルト入力済み）
+    html+=sel('point_team','得点',['自チーム','__OPP__'],r.point_team);
+    html+=sel('deciding_team','決定',['自チーム','__OPP__'],r.deciding_team);
+    // 設定シートから選択肢を取得（空文字選択肢を末尾に追加）
+    var rdOpts=(reviewSettings.resultDetails||[]).concat(['']);
+    var atOpts=(reviewSettings.attackTypes||[]).concat(['']);
+    
+    html+=sel('play_type','プレー',['スパイク','ブロック','サーブ','フェイント','プッシュ',''],r.play_type);
+    html+=txt('player','選手',r.player);
+    html+=sel('receive_grade','キャッチ',['A','B','C','D',''],r.receive_grade);
+    html+=txt('receiver','レシーバー',r.receiver);
+    html+=sel('attack_type','テンポ',atOpts,r.attack_type);
+    html+=sel('blocker_count','ブロック',['0','1','2','3',''],r.blocker_count!=null?r.blocker_count.toString():'');
+    html+=txt('zone_from','ゾーンFrom',r.zone_from);
+    html+=txt('zone_to','ゾーンTo',r.zone_to);
+    html+=sel('result_detail','詳細',rdOpts,r.result_detail);
+    html+=txt('note','メモ',r.note);
+    
+    // 派生値（読み取り専用で参考表示）
+    html+='<div style="font-size:9px;color:#888;margin-top:3px">派生: チーム='+r.team+' 結果='+r.result+' サーブ='+r.serve_team+' R'+r.rotation+'</div>';
     
     html+='<div style="margin-top:5px">';
     
-    // APPROVED/COMMITTED以外は操作ボタンを表示
-    if(r.status!=='APPROVED' && r.status!=='COMMITTED'){
+    // 操作ボタン
+    if(isEditable && r.status!=='APPROVED'){
       html+=
-        '<button onclick="event.stopPropagation();approveSingle(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer">✅ 承認</button>'+
-        '<button onclick="event.stopPropagation();skipRally(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#999;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:4px">⏭ スキップ</button>'+
-        '<button onclick="event.stopPropagation();deleteRally(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#f44336;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:4px">🗑 削除</button>';
+        '<button onclick="event.stopPropagation();saveAndApprove(\''+rk+'\')" style="padding:4px 8px;font-size:10px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer">✅ 保存して承認</button>'+
+        '<button onclick="event.stopPropagation();skipRally(\''+rk+'\')" style="padding:4px 8px;font-size:10px;background:#999;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:4px">⏭ スキップ</button>'+
+        '<button onclick="event.stopPropagation();deleteRally(\''+rk+'\')" style="padding:4px 8px;font-size:10px;background:#f44336;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:4px">🗑 削除</button>';
+    }
+    if(isEditable && r.status==='APPROVED'){
+      html+=
+        '<button onclick="event.stopPropagation();saveAndApprove(\''+rk+'\')" style="padding:4px 8px;font-size:10px;background:#2196F3;color:#fff;border:none;border-radius:4px;cursor:pointer">💾 保存</button>'+
+        '<button onclick="event.stopPropagation();deleteRally(\''+rk+'\')" style="padding:4px 8px;font-size:10px;background:#f44336;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:4px">🗑 削除</button>';
+    }
+    if(isEditable){
+      html+='<button onclick="event.stopPropagation();insertRallyAfter(\''+rk+'\')" style="padding:3px 6px;font-size:9px;background:#fff;color:#2196F3;border:1px solid #2196F3;border-radius:4px;cursor:pointer;margin-left:4px">➕ この後に追加</button>';
     }
     
     html+='</div>';
@@ -1020,6 +1055,27 @@ function toggleCard(header){
     content.style.display='none';
     label.textContent=label.textContent.replace('▼','▶');
   }
+}
+
+// === カードフォームからの保存・承認 ===
+function saveAndApprove(rallyKey){
+  var fid='card-'+rallyKey.replace(/[^a-zA-Z0-9_]/g,'_');
+  var form=document.getElementById(fid);
+  if(!form){showReviewFB('フォームが見つかりません');return;}
+  var modifiedData={};
+  var inputs=form.querySelectorAll('[data-field]');
+  for(var i=0;i<inputs.length;i++){
+    modifiedData[inputs[i].getAttribute('data-field')]=inputs[i].value;
+  }
+  showReviewFB('保存中...');
+  ReviewApi.approveProposal(rallyKey,modifiedData,function(res){
+    if(res.success){
+      showReviewFB('✅ 保存しました');
+      loadRallies(ReviewState.currentSet);
+    }else{
+      showReviewFB('❌ '+res.error);
+    }
+  });
 }
 
 function updateProgressSummary(rallies){
@@ -1130,8 +1186,13 @@ function deleteRally(rallyKey){
   });
 }
 
-// === 追加ボタン実装 ===
+// === 追加ボタン実装（先頭追加） ===
 function insertRally(){
+  insertRallyAfter(null);
+}
+
+// === 指定ラリーの後に追加 ===
+function insertRallyAfter(afterRallyKey){
   var rallyData={
     set:ReviewState.currentSet,
     point_team:prompt('得点チーム（自チーム/相手名）:'),
@@ -1142,7 +1203,7 @@ function insertRally(){
     return;
   }
   showReviewFB('追加中...');
-  ReviewApi.insertRally(null,rallyData,function(res){
+  ReviewApi.insertRally(afterRallyKey,rallyData,function(res){
     if(res.success){
       showReviewFB('✅ 追加しました');
       loadRallies(ReviewState.currentSet);

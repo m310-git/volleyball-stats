@@ -919,12 +919,11 @@ function deleteRally(rallyKey) {
       sheet.deleteRow(rowIndex);
     });
     
-    // 派生値再計算（セット番号を取得）
+    // セット番号を取得
     var deletedRow = data[rowIndices[rowIndices.length - 1] - 2];
     var setNumber = parseInt(deletedRow[col['set']]) || 1;
-    _recalcDerivedValuesInternal(setNumber);
     
-    // rally_seq振り直し（設計書§8.2）
+    // rally_seq振り直し（派生値再計算より先に実行）
     var newLastRow = sheet.getLastRow();
     if (newLastRow > 1) {
       var newData = sheet.getRange(2, 1, newLastRow - 1, AI_COLUMN_COUNT).getValues();
@@ -936,6 +935,9 @@ function deleteRally(rallyKey) {
         }
       }
     }
+    
+    // 派生値再計算（rally_seq振り直し後に実行しスコアを正しく計算）
+    _recalcDerivedValuesInternal(setNumber);
     
     return { success: true };
     
@@ -1046,15 +1048,11 @@ function insertRally(afterRallyKey, rallyData) {
     sheet.insertRowBefore(insertRowIndex);
     sheet.getRange(insertRowIndex, 1, 1, AI_COLUMN_COUNT).setValues([newRow]);
     
-    // 派生値再計算
-    _recalcDerivedValuesInternal(setNumber);
-    
     // rally_seq・rally_key振り直し（全行。2行記録のline2も同じrally_keyに更新）
     var newLastRow = sheet.getLastRow();
     var newData = sheet.getRange(2, 1, newLastRow - 1, AI_COLUMN_COUNT).getValues();
     var seq = 1;
     var updatedRallyKey = '';
-    // まずline1のrally_seq・rally_keyを振り直し、旧key→新keyのマップを作成
     var keyMap = {}; // 旧rally_key → 新rally_key
     for (var j = 0; j < newData.length; j++) {
       if (parseInt(newData[j][col['set']]) === setNumber && parseInt(newData[j][col['line_index']]) === 1) {
@@ -1078,6 +1076,9 @@ function insertRally(afterRallyKey, rallyData) {
         }
       }
     }
+    
+    // 派生値再計算（rally_seq振り直し後に実行しスコアを正しく計算）
+    _recalcDerivedValuesInternal(setNumber);
     
     return { success: true, rally_key: updatedRallyKey || newRallyKey };
     
