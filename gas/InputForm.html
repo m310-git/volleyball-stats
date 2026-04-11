@@ -260,8 +260,12 @@
     <div class="st" id="progressSummary">読み込み中...</div>
   </div>
   
-  <!-- 一括承認ボタン -->
-  <button class="br" onclick="bulkApprove()" style="background:#4CAF50">🟢 高確信一括承認</button>
+  <!-- 操作ボタン群 -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <button class="br" onclick="bulkApprove()" style="background:#4CAF50">🟢 高確信一括承認</button>
+    <button class="br" onclick="insertRally()" style="background:#2196F3">➕ ラリー追加</button>
+    <button class="br" onclick="commitToRawData()" style="background:#9C27B0">📝 全確定</button>
+  </div>
   
   <!-- ラリーカード一覧 -->
   <div id="rallyCards"></div>
@@ -855,23 +859,24 @@ function showMain(){
 
 function loadReviewData(){
   showReviewFB('読み込み中...');
-  
   google.script.run.withSuccessHandler(function(res){
-    if(!res.success){
+    if(res.success){
+      ReviewState.setSummary(res.summary);
+      renderSetTabs(res.summary);
+      if(res.summary.length>0){
+        ReviewState.setCurrentSet(res.summary[0].set);
+      }
+      loadRallies(ReviewState.currentSet);
+    }else{
       showReviewFB('❌ '+res.error);
-      return;
     }
-    renderSetTabs(res.summary);
-    if(res.summary.length>0){
-      currentReviewSet=res.summary[0].set;
-    }
-    loadRallies(currentReviewSet);
   }).withFailureHandler(function(e){
     showReviewFB('❌ '+e.message);
   }).getAIProposalSummary();
 }
 
 function renderSetTabs(summary){
+  ReviewState.setSummary(summary);
   var tabs=document.getElementById('setTabs');
   tabs.innerHTML='';
   summary.forEach(function(s){
@@ -879,12 +884,12 @@ function renderSetTabs(summary){
     b.className='b';
     b.textContent='SET'+s.set;
     b.onclick=function(){
-      currentReviewSet=s.set;
+      ReviewState.setCurrentSet(s.set);
       loadRallies(s.set);
       document.querySelectorAll('#setTabs .b').forEach(function(el){el.classList.remove('s')});
       b.classList.add('s');
     };
-    if(s.set===currentReviewSet)b.classList.add('s');
+    if(s.set===ReviewState.currentSet)b.classList.add('s');
     tabs.appendChild(b);
   });
 }
@@ -892,15 +897,22 @@ function renderSetTabs(summary){
 function loadRallies(setNumber){
   showReviewFB('読み込み中...');
   
+  ReviewState.setCurrentSet(setNumber);
+  ReviewState.setLoading(true);
+  document.getElementById('progressSummary').textContent='読み込み中...';
+
   google.script.run.withSuccessHandler(function(res){
-    if(!res.success){
+    ReviewState.setLoading(false);
+    if(res.success){
+      ReviewState.setRallies(res.rallies);
+      reviewRallies=res.rallies;
+      renderRallyCards(res.rallies);
+      updateProgressSummary(res.rallies);
+    }else{
       showReviewFB('❌ '+res.error);
-      return;
     }
-    reviewRallies=res.rallies;
-    renderRallyCards(res.rallies);
-    updateProgressSummary(res.rallies);
   }).withFailureHandler(function(e){
+    ReviewState.setLoading(false);
     showReviewFB('❌ '+e.message);
   }).getAIProposals(setNumber);
 }
@@ -942,11 +954,17 @@ function renderRallyCards(rallies){
     var card=document.createElement('div');
     card.style.cssText='background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px;margin-bottom:8px';
     
+    // 高確信カードは折りたたみ（設計書§8.5）
+    var isHighConfidence=r.status==='HIGH';
+    var folded=isHighConfidence?'display:none':'';
+    
     var html=
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'+
-        '<span style="font-size:9px;color:'+statusColor+';font-weight:bold">'+statusLabel+'</span>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;cursor:pointer" onclick="toggleCard(this)">'+
+        '<span style="font-size:9px;color:'+statusColor+';font-weight:bold">'+statusLabel+(isHighConfidence?' ▼':'')+'</span>'+
         '<span style="font-size:9px;color:#666">確信度:'+(r.confidence*100).toFixed(0)+'%</span>'+
       '</div>';
+    
+    html+='<div style="'+folded+'">';
     
     // 2行記録の場合はline1とline2を並列表示
     if(group.line2){
@@ -977,15 +995,30 @@ function renderRallyCards(rallies){
     // APPROVED/COMMITTED以外は操作ボタンを表示
     if(r.status!=='APPROVED' && r.status!=='COMMITTED'){
       html+=
-        '<button onclick="approveSingle(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer">✅ 承認</button>'+
-        '<button onclick="skipRally(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#999;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:4px">⏭ スキップ</button>';
+        '<button onclick="event.stopPropagation();approveSingle(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#4CAF50;color:#fff;border:none;border-radius:4px;cursor:pointer">✅ 承認</button>'+
+        '<button onclick="event.stopPropagation();skipRally(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#999;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:4px">⏭ スキップ</button>'+
+        '<button onclick="event.stopPropagation();deleteRally(\''+r.rally_key+'\')" style="padding:4px 8px;font-size:10px;background:#f44336;color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:4px">🗑 削除</button>';
     }
     
+    html+='</div>';
     html+='</div>';
     
     card.innerHTML=html;
     container.appendChild(card);
   });
+}
+
+// === カード折りたたみ ===
+function toggleCard(header){
+  var content=header.nextElementSibling;
+  var label=header.querySelector('span');
+  if(content.style.display==='none'){
+    content.style.display='';
+    label.textContent=label.textContent.replace('▶','▼');
+  }else{
+    content.style.display='none';
+    label.textContent=label.textContent.replace('▼','▶');
+  }
 }
 
 function updateProgressSummary(rallies){
@@ -1041,6 +1074,162 @@ function showReviewFB(m){
   f.textContent=m;
   f.className='fb ok';
   setTimeout(function(){f.className='fb hd'},2000);
+}
+
+// === ReviewApiモジュール（設計書§8.4） ===
+var ReviewApi={
+  approveProposal:function(rallyKey,modifiedData,callback){
+    google.script.run.withSuccessHandler(function(res){
+      callback(res);
+    }).withFailureHandler(function(e){
+      callback({success:false,error:e.message});
+    }).approveProposal(rallyKey,modifiedData);
+  },
+  
+  bulkApproveHighConfidence:function(setNumber,callback){
+    google.script.run.withSuccessHandler(function(res){
+      callback(res);
+    }).withFailureHandler(function(e){
+      callback({success:false,error:e.message});
+    }).bulkApproveHighConfidence(setNumber);
+  },
+  
+  deleteRally:function(rallyKey,callback){
+    google.script.run.withSuccessHandler(function(res){
+      callback(res);
+    }).withFailureHandler(function(e){
+      callback({success:false,error:e.message});
+    }).deleteRally(rallyKey);
+  },
+  
+  insertRally:function(afterRallyKey,rallyData,callback){
+    google.script.run.withSuccessHandler(function(res){
+      callback(res);
+    }).withFailureHandler(function(e){
+      callback({success:false,error:e.message});
+    }).insertRally(afterRallyKey,rallyData);
+  },
+  
+  commitToRawData:function(setNumber,callback){
+    google.script.run.withSuccessHandler(function(res){
+      callback(res);
+    }).withFailureHandler(function(e){
+      callback({success:false,error:e.message});
+    }).commitToRawData(setNumber);
+  }
+};
+
+// === ReviewStateモジュール（設計書§8.4） ===
+var ReviewState={
+  currentSet:1,
+  rallies:[],
+  summary:[],
+  loading:false,
+  
+  setCurrentSet:function(set){
+    this.currentSet=set;
+  },
+  
+  setRallies:function(rallies){
+    this.rallies=rallies;
+  },
+  
+  setSummary:function(summary){
+    this.summary=summary;
+  },
+  
+  setLoading:function(loading){
+    this.loading=loading;
+  }
+};
+
+// === 削除ボタン実装 ===
+function deleteRally(rallyKey){
+  if(!confirm('このラリーを削除しますか？'))return;
+  showReviewFB('削除中...');
+  ReviewApi.deleteRally(rallyKey,function(res){
+    if(res.success){
+      showReviewFB('✅ 削除しました');
+      loadRallies(ReviewState.currentSet);
+    }else{
+      showReviewFB('❌ '+res.error);
+    }
+  });
+}
+
+// === 追加ボタン実装 ===
+function insertRally(){
+  var rallyData={
+    set:ReviewState.currentSet,
+    point_team:prompt('得点チーム（自チーム/相手名）:'),
+    deciding_team:prompt('決定チーム（自チーム/相手名）:')
+  };
+  if(!rallyData.point_team||!rallyData.deciding_team){
+    showReviewFB('❌ 入力がキャンセルされました');
+    return;
+  }
+  showReviewFB('追加中...');
+  ReviewApi.insertRally(null,rallyData,function(res){
+    if(res.success){
+      showReviewFB('✅ 追加しました');
+      loadRallies(ReviewState.currentSet);
+    }else{
+      showReviewFB('❌ '+res.error);
+    }
+  });
+}
+
+// === 全確定ボタン実装 ===
+function commitToRawData(){
+  if(!confirm('全ての承認済みラリーを生データに転記しますか？'))return;
+  showReviewFB('転記中...');
+  ReviewApi.commitToRawData(ReviewState.currentSet,function(res){
+    if(res.success){
+      showReviewFB('✅ '+res.committed+'件を転記しました');
+      loadRallies(ReviewState.currentSet);
+    }else{
+      showReviewFB('❌ '+res.error);
+    }
+  });
+}
+
+// === 自動スクロール実装 ===
+function scrollToNextUnconfirmed(){
+  var cards=document.querySelectorAll('#rallyCards > div');
+  for(var i=0;i<cards.length;i++){
+    var statusLabel=cards[i].querySelector('span');
+    if(statusLabel&&!statusLabel.textContent.includes('承認済')&&!statusLabel.textContent.includes('転記済')){
+      cards[i].scrollIntoView({behavior:'smooth',block:'center'});
+      return;
+    }
+  }
+}
+
+// === 既存関数をReviewApiを使用するように修正 ===
+function approveSingle(rallyKey){
+  showReviewFB('承認中...');
+  ReviewApi.approveProposal(rallyKey,null,function(res){
+    if(res.success){
+      showReviewFB('✅ 承認しました');
+      loadRallies(ReviewState.currentSet);
+      scrollToNextUnconfirmed();
+    }else{
+      showReviewFB('❌ '+res.error);
+    }
+  });
+}
+
+function bulkApprove(){
+  if(!confirm('高確信のラリーを一括承認しますか？'))return;
+  showReviewFB('一括承認中...');
+  ReviewApi.bulkApproveHighConfidence(ReviewState.currentSet,function(res){
+    if(res.success){
+      showReviewFB('✅ '+res.approved+'件を承認しました');
+      loadRallies(ReviewState.currentSet);
+    }else{
+      showReviewFB('❌ '+res.error);
+    }
+  });
 }
 </script>
 
