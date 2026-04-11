@@ -340,12 +340,179 @@ function getAIProposalSummary() {
   return { success: true, summary: summary };
 }
 
-// === Notion設定 ===
-function getNotionToken() {
-  var props = PropertiesService.getScriptProperties();
-  return props.getProperty('NOTION_TOKEN');
+// === AI提案系関数（フェーズ2: 承認系） ===
+
+/**
+ * AI提案を承認
+ * @param {string} rallyKey - ラリーキー
+ * @param {Object} modifiedData - 修正データ（オプション）
+ * @return {Object} { success: boolean, error: string }
+ */
+function approveProposal(rallyKey, modifiedData) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000); // 10秒待機
+  } catch (e) {
+    return { success: false, error: 'ロック取得失敗: ' + e.message };
+  }
+  
+  try {
+    var sheet = getAIProposalsSheet();
+    if (!sheet) {
+      return { success: false, error: 'AI提案シートがありません' };
+    }
+    
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) {
+      return { success: false, error: 'データがありません' };
+    }
+    
+    var col = getAIColumnMapping(sheet);
+    var data = sheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
+    
+    // rally_keyで検索
+    var rowIndex = -1;
+    for (var i = 0; i < data.length; i++) {
+      if (data[i][col['rally_key']] && data[i][col['rally_key']].toString() === rallyKey) {
+        rowIndex = i + 2; // 1-indexed (ヘッダー行+1)
+        break;
+      }
+    }
+    
+    if (rowIndex === -1) {
+      return { success: false, error: 'rally_keyが見つかりません: ' + rallyKey };
+    }
+    
+    var row = data[rowIndex - 2];
+    var status = row[col['status']] ? row[col['status']].toString() : '';
+    
+    // COMMITTEDは変更不可
+    if (status === 'COMMITTED') {
+      return { success: false, error: 'COMMITTEDは変更できません' };
+    }
+    
+    // 修正データのマージ
+    var updatedRow = row.slice();
+    if (modifiedData) {
+      // point_teamが変更された場合、派生値再計算が必要
+      var pointTeamChanged = modifiedData.point_team && modifiedData.point_team !== row[col['point_team']];
+      
+      // 更新可能なフィールドのみ
+      var updateFields = ['point_team', 'serve_team', 'rotation', 'deciding_team', 
+                          'receive_grade', 'receiver', 'team', 'player', 'play_type',
+                          'result', 'result_detail', 'attack_type', 'blocker_count',
+                          'zone_from', 'zone_to', 'note'];
+      
+      updateFields.forEach(function(field) {
+        if (modifiedData[field] !== undefined && modifiedData[field] !== null) {
+          updatedRow[col[field]] = modifiedData[field];
+        }
+      });
+      
+      // human_modifiedをTRUE
+      updatedRow[col['human_modified']] = 'TRUE';
+      
+      // final_payloadを更新（JSON文字列化）
+      modifiedData.human_modified = 'TRUE';
+      updatedRow[col['final_payload']] = JSON.stringify(modifiedData);
+      
+      // point_team変更時は派生値再計算
+      if (pointTeamChanged) {
+        var setNumber = parseInt(updatedRow[col['set']]) || 1;
+        _recalcDerivedValuesInternal(setNumber);
+      }
+    }
+    
+    // statusをAPPROVEDに
+    updatedRow[col['status']] = 'APPROVED';
+    
+    // approved_at, approved_byを設定
+    updatedRow[col['approved_at']] = new Date().toISOString();
+    updatedRow[col['approved_by']] = Session.getActiveUser().getEmail();
+    
+    // line_index=2の場合、payload関連フィールドは空のまま
+    if (parseInt(updatedRow[col['line_index']]) === 2) {
+      updatedRow[col['original_payload']] = '';
+      updatedRow[col['final_payload']] = '';
+      updatedRow[col['human_modified']] = '';
+      updatedRow[col['approved_at']] = '';
+      updatedRow[col['approved_by']] = '';
+    }
+    
+    // 更新
+    sheet.getRange(rowIndex, 1, 1, AI_COLUMN_COUNT).setValues([updatedRow]);
+    
+    return { success: true };
+    
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
+/**
+ * 高確信度の提案を一括承認
+ * @param {number} setNumber - セット番号
+ * @return {Object} { success: boolean, approved: number, error: string }
+ */
+function bulkApproveHighConfidence(setNumber) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, approved: 0, error: 'ロック取得失敗: ' + e.message };
+  }
+  
+  try {
+    var sheet = getAIProposalsSheet();
+    if (!sheet) {
+      return { success: false, approved: 0, error: 'AI提案シートがありません' };
+    }
+    
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) {
+      return { success: true, approved: 0 };
+    }
+    
+    var col = getAIColumnMapping(sheet);
+    var data = sheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
+    
+    var approvedCount = 0;
+    var rowsToUpdate = [];
+    
+    // 指定セットのHIGH/MEDIUMをAPPROVEDに
+    for (var i = 0; i < data.length; i++) {
+      var setVal = parseInt(data[i][col['set']]) || 1;
+      var status = data[i][col['status']] ? data[i][col['status']].toString() : '';
+      
+      if (setVal === setNumber && (status === 'HIGH' || status === 'MEDIUM')) {
+        var updatedRow = data[i].slice();
+        updatedRow[col['status']] = 'APPROVED';
+        updatedRow[col['approved_at']] = new Date().toISOString();
+        updatedRow[col['approved_by']] = Session.getActiveUser().getEmail();
+        rowsToUpdate.push({ row: i + 2, data: updatedRow });
+        approvedCount++;
+      }
+    }
+    
+    // バッチ更新
+    if (rowsToUpdate.length > 0) {
+      rowsToUpdate.forEach(function(item) {
+        sheet.getRange(item.row, 1, 1, AI_COLUMN_COUNT).setValues([item.data]);
+      });
+    }
+    
+    return { success: true, approved: approvedCount };
+    
+  } catch (e) {
+    return { success: false, approved: 0, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// === Notion設定 ===
 function getNotionPageId() {
   var props = PropertiesService.getScriptProperties();
   return props.getProperty('NOTION_PAGE_ID');
