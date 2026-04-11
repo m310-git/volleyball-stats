@@ -2,6 +2,7 @@
 var SHEET_NAME_DATA = '生データ';
 var SHEET_NAME_SETTINGS = '設定';
 var COLUMN_COUNT = 20;
+var PLAY_TYPES = ['サーブ','スパイク','フェイント','プッシュ','ブロック'];
 
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('InputForm')
@@ -200,10 +201,63 @@ function getNotionPageId() {
   return props.getProperty('NOTION_PAGE_ID');
 }
 
+// === 試合データ集計 ===
+function analyzeMatch(rows, col) {
+  var last = rows[rows.length - 1];
+  var scoreUs = parseInt(last[col['score_us']]) || 0;
+  var scoreThem = parseInt(last[col['score_them']]) || 0;
+  var osvTotal=0,osvWon=0,usvTotal=0,usvWon=0;
+  var recvA=0,recvB=0,recvC=0,recvD=0;
+  var rot={};
+  for(var r=1;r<=6;r++)rot[r]={won:0,lost:0};
+  var playPt={},playMs={};
+  PLAY_TYPES.forEach(function(p){playPt[p]=0;playMs[p]=0});
+  var usPoints=0,usMiss=0;
+
+  rows.forEach(function(row){
+    var st=row[col['serve_team']].toString();
+    var pt=row[col['point_team']].toString();
+    var rotation=parseInt(row[col['rotation']])||0;
+    var rg=row[col['receive_grade']].toString();
+    var team=row[col['team']].toString();
+    var result=row[col['result']].toString();
+    var playType=row[col['play_type']].toString();
+
+    if(st!=='自チーム'){osvTotal++;if(pt==='自チーム')osvWon++}
+    else{usvTotal++;if(pt==='自チーム')usvWon++}
+    if(rg==='A')recvA++;if(rg==='B')recvB++;if(rg==='C')recvC++;if(rg==='D')recvD++;
+    if(rotation>=1&&rotation<=6){if(pt==='自チーム')rot[rotation].won++;else rot[rotation].lost++}
+    if(team==='自チーム'){
+      if(result==='得点'){usPoints++;if(playPt[playType]!==undefined)playPt[playType]++}
+      if(result==='ミス'){usMiss++;if(playMs[playType]!==undefined)playMs[playType]++}
+    }
+  });
+
+  var recvTotal=recvA+recvB+recvC+recvD;
+  return {
+    date:last[col['date']].toString(),opponent:last[col['opponent']].toString(),
+    scoreUs:scoreUs,scoreThem:scoreThem,
+    result:scoreUs>scoreThem?'勝':scoreUs<scoreThem?'負':'分',
+    rallies:rows.length,
+    soRate:osvTotal>0?(osvWon/osvTotal*100).toFixed(1):'0.0',soWon:osvWon,soTotal:osvTotal,
+    brkRate:usvTotal>0?(usvWon/usvTotal*100).toFixed(1):'0.0',brkWon:usvWon,brkTotal:usvTotal,
+    usEff:(usPoints+usMiss)>0?(usPoints/(usPoints+usMiss)*100).toFixed(1):'0.0',
+    recvA:recvA,recvB:recvB,recvC:recvC,recvD:recvD,
+    recvABRate:recvTotal>0?((recvA+recvB)/recvTotal*100).toFixed(1):'0.0',
+    rot:rot,playPt:playPt,playMs:playMs,
+  };
+}
+
 // === Notion自動更新 ===
 function updateNotion() {
   var NOTION_TOKEN = getNotionToken();
   var NOTION_PAGE_ID = getNotionPageId();
+
+  // トークンまたはページIDが未設定の場合はエラー
+  if (!NOTION_TOKEN || !NOTION_PAGE_ID) {
+    throw new Error('NOTION_TOKENまたはNOTION_PAGE_IDがスクリプトプロパティに設定されていません');
+  }
+
   var sheet = getDataSheet();
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return;
@@ -219,52 +273,8 @@ function updateNotion() {
   });
 
   var keys = Object.keys(matches).sort().reverse().slice(0, 3).reverse();
-
   var results = keys.map(function(key) {
-    var rows = matches[key];
-    var last = rows[rows.length - 1];
-    var scoreUs = parseInt(last[col['score_us']]) || 0;
-    var scoreThem = parseInt(last[col['score_them']]) || 0;
-    var osvTotal=0,osvWon=0,usvTotal=0,usvWon=0;
-    var recvA=0,recvB=0,recvC=0,recvD=0;
-    var rot={};
-    for(var r=1;r<=6;r++)rot[r]={won:0,lost:0};
-    var playPt={},playMs={};
-    ['サーブ','スパイク','フェイント','プッシュ','ブロック'].forEach(function(p){playPt[p]=0;playMs[p]=0});
-    var usPoints=0,usMiss=0;
-
-    rows.forEach(function(row){
-      var st=row[col['serve_team']].toString();
-      var pt=row[col['point_team']].toString();
-      var rotation=parseInt(row[col['rotation']])||0;
-      var rg=row[col['receive_grade']].toString();
-      var team=row[col['team']].toString();
-      var result=row[col['result']].toString();
-      var playType=row[col['play_type']].toString();
-
-      if(st!=='自チーム'){osvTotal++;if(pt==='自チーム')osvWon++}
-      else{usvTotal++;if(pt==='自チーム')usvWon++}
-      if(rg==='A')recvA++;if(rg==='B')recvB++;if(rg==='C')recvC++;if(rg==='D')recvD++;
-      if(rotation>=1&&rotation<=6){if(pt==='自チーム')rot[rotation].won++;else rot[rotation].lost++}
-      if(team==='自チーム'){
-        if(result==='得点'){usPoints++;if(playPt[playType]!==undefined)playPt[playType]++}
-        if(result==='ミス'){usMiss++;if(playMs[playType]!==undefined)playMs[playType]++}
-      }
-    });
-
-    var recvTotal=recvA+recvB+recvC+recvD;
-    return {
-      date:last[col['date']].toString(),opponent:last[col['opponent']].toString(),
-      scoreUs:scoreUs,scoreThem:scoreThem,
-      result:scoreUs>scoreThem?'勝':scoreUs<scoreThem?'負':'分',
-      rallies:rows.length,
-      soRate:osvTotal>0?(osvWon/osvTotal*100).toFixed(1):'0.0',soWon:osvWon,soTotal:osvTotal,
-      brkRate:usvTotal>0?(usvWon/usvTotal*100).toFixed(1):'0.0',brkWon:usvWon,brkTotal:usvTotal,
-      usEff:(usPoints+usMiss)>0?(usPoints/(usPoints+usMiss)*100).toFixed(1):'0.0',
-      recvA:recvA,recvB:recvB,recvC:recvC,recvD:recvD,
-      recvABRate:recvTotal>0?((recvA+recvB)/recvTotal*100).toFixed(1):'0.0',
-      rot:rot,playPt:playPt,playMs:playMs,
-    };
+    return analyzeMatch(matches[key], col);
   });
 
   clearNotionPage(NOTION_PAGE_ID, NOTION_TOKEN);
@@ -298,10 +308,9 @@ function updateNotion() {
   }), NOTION_TOKEN);
   notionAddDivider(NOTION_PAGE_ID, NOTION_TOKEN);
 
-  var plays=['サーブ','スパイク','フェイント','プッシュ','ブロック'];
   notionAddHeading(NOTION_PAGE_ID,'プレー別', 2, NOTION_TOKEN);
-  notionAddTable(NOTION_PAGE_ID,['日付','相手'].concat(plays),
-    results.map(function(r){var row=[r.date,r.opponent];plays.forEach(function(p){row.push(r.playPt[p]+'得/'+r.playMs[p]+'失')});return row}), NOTION_TOKEN);
+  notionAddTable(NOTION_PAGE_ID,['日付','相手'].concat(PLAY_TYPES),
+    results.map(function(r){var row=[r.date,r.opponent];PLAY_TYPES.forEach(function(p){row.push(r.playPt[p]+'得/'+r.playMs[p]+'失')});return row}), NOTION_TOKEN);
 }
 
 // === Notion APIヘルパー ===
