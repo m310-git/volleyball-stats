@@ -2,6 +2,9 @@
 var SHEET_NAME_DATA = '生データ';
 var SHEET_NAME_SETTINGS = '設定';
 var COLUMN_COUNT = 20;
+var ROTATION_COUNT = 6;
+var MAX_MATCHES = 3;
+var NOTION_API_VERSION = '2022-06-28';
 var PLAY_TYPES = ['サーブ','スパイク','フェイント','プッシュ','ブロック'];
 
 function doGet() {
@@ -209,7 +212,7 @@ function analyzeMatch(rows, col) {
   var osvTotal=0,osvWon=0,usvTotal=0,usvWon=0;
   var recvA=0,recvB=0,recvC=0,recvD=0;
   var rot={};
-  for(var r=1;r<=6;r++)rot[r]={won:0,lost:0};
+  for(var r=1;r<=ROTATION_COUNT;r++)rot[r]={won:0,lost:0};
   var playPt={},playMs={};
   PLAY_TYPES.forEach(function(p){playPt[p]=0;playMs[p]=0});
   var usPoints=0,usMiss=0;
@@ -226,7 +229,7 @@ function analyzeMatch(rows, col) {
     if(st!=='自チーム'){osvTotal++;if(pt==='自チーム')osvWon++}
     else{usvTotal++;if(pt==='自チーム')usvWon++}
     if(rg==='A')recvA++;if(rg==='B')recvB++;if(rg==='C')recvC++;if(rg==='D')recvD++;
-    if(rotation>=1&&rotation<=6){if(pt==='自チーム')rot[rotation].won++;else rot[rotation].lost++}
+    if(rotation>=1&&rotation<=ROTATION_COUNT){if(pt==='自チーム')rot[rotation].won++;else rot[rotation].lost++}
     if(team==='自チーム'){
       if(result==='得点'){usPoints++;if(playPt[playType]!==undefined)playPt[playType]++}
       if(result==='ミス'){usMiss++;if(playMs[playType]!==undefined)playMs[playType]++}
@@ -272,7 +275,7 @@ function updateNotion() {
     matches[key].push(row);
   });
 
-  var keys = Object.keys(matches).sort().reverse().slice(0, 3).reverse();
+  var keys = Object.keys(matches).sort().reverse().slice(0, MAX_MATCHES).reverse();
   var results = keys.map(function(key) {
     return analyzeMatch(matches[key], col);
   });
@@ -303,7 +306,7 @@ function updateNotion() {
   var rotH=['日付','相手','R1','R2','R3','R4','R5','R6'];
   notionAddTable(NOTION_PAGE_ID,rotH,results.map(function(r){
     var row=[r.date,r.opponent];
-    for(var i=1;i<=6;i++){var t=r.rot[i].won+r.rot[i].lost;row.push((t>0?(r.rot[i].won/t*100).toFixed(0):'0')+'% ('+r.rot[i].won+'/'+t+')')}
+    for(var i=1;i<=ROTATION_COUNT;i++){var t=r.rot[i].won+r.rot[i].lost;row.push((t>0?(r.rot[i].won/t*100).toFixed(0):'0')+'% ('+r.rot[i].won+'/'+t+')')}
     return row;
   }), NOTION_TOKEN);
   notionAddDivider(NOTION_PAGE_ID, NOTION_TOKEN);
@@ -316,23 +319,27 @@ function updateNotion() {
 // === Notion APIヘルパー ===
 function notionFetch(endpoint,payload,token){
   return JSON.parse(UrlFetchApp.fetch('https://api.notion.com/v1/'+endpoint,{
-    method:'post',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json','Notion-Version':'2022-06-28'},
+    method:'post',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json','Notion-Version':NOTION_API_VERSION},
     payload:JSON.stringify(payload),muteHttpExceptions:true
   }).getContentText());
 }
 
 function notionGet(endpoint,token){
   return JSON.parse(UrlFetchApp.fetch('https://api.notion.com/v1/'+endpoint,{
-    method:'get',headers:{'Authorization':'Bearer '+token,'Notion-Version':'2022-06-28'},muteHttpExceptions:true
+    method:'get',headers:{'Authorization':'Bearer '+token,'Notion-Version':NOTION_API_VERSION},muteHttpExceptions:true
   }).getContentText());
+}
+
+function notionDelete(endpoint,token){
+  UrlFetchApp.fetch('https://api.notion.com/v1/'+endpoint,{
+    method:'delete',headers:{'Authorization':'Bearer '+token,'Notion-Version':NOTION_API_VERSION},muteHttpExceptions:true
+  });
 }
 
 function clearNotionPage(pageId,token){
   var blocks=notionGet('blocks/'+pageId+'/children',token);
   if(blocks.results){blocks.results.forEach(function(b){
-    UrlFetchApp.fetch('https://api.notion.com/v1/blocks/'+b.id,{
-      method:'delete',headers:{'Authorization':'Bearer '+token,'Notion-Version':'2022-06-28'},muteHttpExceptions:true
-    });
+    notionDelete('blocks/'+b.id,token);
   })}
 }
 
