@@ -453,6 +453,8 @@ function approveProposal(rallyKey, modifiedData) {
       
       // point_team変更時は派生値再計算
       var pointTeamChanged = modifiedFields.indexOf('point_team') >= 0;
+      var decidingTeamChanged = modifiedFields.indexOf('deciding_team') >= 0;
+      
       if (pointTeamChanged) {
         var setNumber = parseInt(updatedRow1[col['set']]) || 1;
         _recalcDerivedValuesInternal(setNumber);
@@ -461,6 +463,41 @@ function approveProposal(rallyKey, modifiedData) {
         updatedRow1 = data[line1Index - 2].slice();
         if (line2Index !== -1) {
           updatedRow2 = data[line2Index - 2].slice();
+        }
+      } else if (decidingTeamChanged && modifiedFields.length === 1) {
+        // deciding_teamのみ変更時は該当ラリーのteam/resultのみ再決定（設計書§8.2ステップ5）
+        var newPointTeam = updatedRow1[col['point_team']] ? updatedRow1[col['point_team']].toString() : '';
+        var newDecidingTeam = updatedRow1[col['deciding_team']] ? updatedRow1[col['deciding_team']].toString() : '';
+        var opponent = row1[col['opponent']] ? row1[col['opponent']].toString() : '';
+        
+        // team/result決定（設計書§6.1.3, §7.3）
+        if (isTwoLine === 'TRUE') {
+          // 2行記録
+          updatedRow1[col['team']] = '自チーム';
+          updatedRow1[col['result']] = 'ミス';
+          if (updatedRow2) {
+            updatedRow2[col['team']] = opponent;
+            updatedRow2[col['result']] = '得点';
+          }
+        } else {
+          // 1行記録
+          if (newDecidingTeam === '自チーム') {
+            if (newPointTeam === '自チーム') {
+              updatedRow1[col['team']] = '自チーム';
+              updatedRow1[col['result']] = '得点';
+            } else {
+              updatedRow1[col['team']] = '自チーム';
+              updatedRow1[col['result']] = 'ミス';
+            }
+          } else {
+            if (newPointTeam === opponent) {
+              updatedRow1[col['team']] = opponent;
+              updatedRow1[col['result']] = '得点';
+            } else {
+              updatedRow1[col['team']] = opponent;
+              updatedRow1[col['result']] = 'ミス';
+            }
+          }
         }
       }
     }
