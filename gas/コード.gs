@@ -918,8 +918,25 @@ function insertRally(afterRallyKey, rallyData) {
       }
     }
     
-    // 新しいrally_key生成
-    var newRallyKey = 'rally_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    // 同セット既存行からinitial_serve_team/initial_rotationを継承（設計書§8.2）
+    var initialServeTeam = '';
+    var initialRotation = 1;
+    var matchId = '';
+    if (lastRow > 1) {
+      var data = sheet.getRange(2, 1, lastRow - 1, AI_COLUMN_COUNT).getValues();
+      for (var i = 0; i < data.length; i++) {
+        if (parseInt(data[i][col['set']]) === setNumber && parseInt(data[i][col['line_index']]) === 1) {
+          initialServeTeam = data[i][col['initial_serve_team']] ? data[i][col['initial_serve_team']].toString() : '';
+          initialRotation = parseInt(data[i][col['initial_rotation']]) || 1;
+          matchId = data[i][col['match_id']] ? data[i][col['match_id']].toString() : '';
+          break;
+        }
+      }
+    }
+    
+    // 新しいrally_key生成（設計書§5形式: {match_id}_set{N}_rally{NNN}）
+    // rally_seqは派生値再計算後に設定するため、仮の値を設定
+    var newRallyKey = matchId + '_set' + setNumber + '_rallyTMP';
     
     // 行作成
     var newRow = new Array(AI_COLUMN_COUNT);
@@ -952,8 +969,9 @@ function insertRally(afterRallyKey, rallyData) {
     } catch (e) {
       newRow[col['approved_by']] = '';
     }
-    newRow[col['initial_serve_team']] = rallyData.initial_serve_team || '';
-    newRow[col['initial_rotation']] = rallyData.initial_rotation || 1;
+    newRow[col['initial_serve_team']] = initialServeTeam;
+    newRow[col['initial_rotation']] = initialRotation;
+    newRow[col['match_id']] = matchId;
     
     // 挿入
     sheet.insertRow(insertRowIndex);
@@ -966,14 +984,21 @@ function insertRally(afterRallyKey, rallyData) {
     var newLastRow = sheet.getLastRow();
     var newData = sheet.getRange(2, 1, newLastRow - 1, AI_COLUMN_COUNT).getValues();
     var seq = 1;
+    var updatedRallyKey = '';
     for (var j = 0; j < newData.length; j++) {
       if (parseInt(newData[j][col['set']]) === setNumber && parseInt(newData[j][col['line_index']]) === 1) {
         sheet.getRange(j + 2, col['rally_seq'] + 1).setValue(seq);
+        // rally_keyを正しいrally_seqで更新
+        var currentRallyKey = newData[j][col['rally_key']] ? newData[j][col['rally_key']].toString() : '';
+        if (currentRallyKey === newRallyKey) {
+          updatedRallyKey = matchId + '_set' + setNumber + '_rally' + seq.toString().padStart(3, '0');
+          sheet.getRange(j + 2, col['rally_key'] + 1).setValue(updatedRallyKey);
+        }
         seq++;
       }
     }
     
-    return { success: true, rally_key: newRallyKey };
+    return { success: true, rally_key: updatedRallyKey || newRallyKey };
     
   } catch (e) {
     return { success: false, error: e.message };
