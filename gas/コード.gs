@@ -1280,6 +1280,60 @@ function commitToRawData(setNumber) {
       aiSheet.getRange(item.row, 1, 1, AI_COLUMN_COUNT).setValues([item.data]);
     });
     
+    // AI精度ログ記録（設計書§5.4）
+    var accuracyLogSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('AI精度ログ');
+    if (!accuracyLogSheet) {
+      accuracyLogSheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet('AI精度ログ');
+      // ヘッダー行を設定
+      accuracyLogSheet.appendRow(['date', 'set', 'rally_key', 'field_name', 'ai_value', 'human_value', 'was_correct', 'ai_confidence']);
+    }
+    
+    var accuracyRows = [];
+    var comparisonFields = ['point_team', 'deciding_team', 'receive_grade', 'receiver', 'play_type', 'player', 'result_detail', 'attack_type', 'blocker_count', 'zone_from', 'zone_to', 'our_defense_type'];
+    
+    aiData.forEach(function(row) {
+      var setVal = parseInt(row[aiCol['set']]) || 1;
+      var status = row[aiCol['status']] ? row[aiCol['status']].toString() : '';
+      var lineIndex = parseInt(row[aiCol['line_index']]) || 1;
+      var originalPayload = row[aiCol['original_payload']] ? row[aiCol['original_payload']].toString() : '';
+      var finalPayload = row[aiCol['final_payload']] ? row[aiCol['final_payload']].toString() : '';
+      var fieldConfidences = row[aiCol['field_confidences']] ? row[aiCol['field_confidences']].toString() : '';
+      
+      // line1かつoriginal_payload非空の行のみ（設計書§5.4）
+      if (setVal === setNumber && lineIndex === 1 && status === 'COMMITTED' && originalPayload && originalPayload !== '') {
+        try {
+          var originalJson = JSON.parse(originalPayload);
+          var finalJson = finalPayload ? JSON.parse(finalPayload) : {};
+          var confJson = fieldConfidences ? JSON.parse(fieldConfidences) : {};
+          
+          comparisonFields.forEach(function(field) {
+            var aiValue = originalJson[field] || '';
+            var humanValue = finalJson[field] || '';
+            var wasCorrect = aiValue === humanValue;
+            var aiConfidence = confJson[field] || 0;
+            
+            accuracyRows.push([
+              row[aiCol['date']] ? row[aiCol['date']].toString() : '',
+              setVal,
+              row[aiCol['rally_key']] ? row[aiCol['rally_key']].toString() : '',
+              field,
+              aiValue,
+              humanValue,
+              wasCorrect,
+              aiConfidence
+            ]);
+          });
+        } catch (e) {
+          // JSONパースエラーはスキップ
+        }
+      }
+    });
+    
+    // 精度ログを追記
+    if (accuracyRows.length > 0) {
+      accuracyLogSheet.getRange(accuracyLogSheet.getLastRow() + 1, 1, accuracyRows.length, 8).setValues(accuracyRows);
+    }
+    
     return { success: true, committed: committedCount };
     
   } catch (e) {
