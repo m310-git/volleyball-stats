@@ -1,3 +1,8 @@
+// === 定数 ===
+var SHEET_NAME_DATA = '生データ';
+var SHEET_NAME_SETTINGS = '設定';
+var COLUMN_COUNT = 20;
+
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('InputForm')
     .setTitle('🏐 バレー スタッツ')
@@ -5,9 +10,26 @@ function doGet() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-function addRecord(data) {
+// === ヘルパー関数 ===
+function getDataSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('生データ');
+  return ss.getSheetByName(SHEET_NAME_DATA);
+}
+
+function getSettingsSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ss.getSheetByName(SHEET_NAME_SETTINGS);
+}
+
+function getColumnMapping(sheet) {
+  var headers = sheet.getRange(1, 1, 1, COLUMN_COUNT).getValues()[0];
+  var col = {};
+  headers.forEach(function(h, i) { col[h.toString().trim()] = i; });
+  return col;
+}
+
+function addRecord(data) {
+  var sheet = getDataSheet();
 
   // ヘッダーと完全一致する順番
   // A:date B:opponent C:set D:score_us E:score_them
@@ -45,17 +67,12 @@ function addRecord(data) {
 }
 
 function undoLast() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('生データ');
+  var sheet = getDataSheet();
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return { success: false };
 
-  // ヘッダーから列位置を取得（ずれ防止）
-  var headers = sheet.getRange(1, 1, 1, 20).getValues()[0];
-  var col = {};
-  headers.forEach(function(h, i) { col[h.toString().trim()] = i; });
-
-  var row = sheet.getRange(lastRow, 1, 1, 20).getValues()[0];
+  var col = getColumnMapping(sheet);
+  var row = sheet.getRange(lastRow, 1, 1, COLUMN_COUNT).getValues()[0];
   sheet.deleteRow(lastRow);
 
   return {
@@ -72,8 +89,7 @@ function undoLast() {
 }
 
 function getLastState() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('生データ');
+  var sheet = getDataSheet();
   var lastRow = sheet.getLastRow();
 
   if (lastRow <= 1) {
@@ -85,13 +101,8 @@ function getLastState() {
     };
   }
 
-  // ヘッダーから列位置を取得
-  var headers = sheet.getRange(1, 1, 1, 20).getValues()[0];
-  var col = {};
-  headers.forEach(function(h, i) { col[h.toString().trim()] = i; });
-
-  // 最後の行を取得
-  var row = sheet.getRange(lastRow, 1, 1, 20).getValues()[0];
+  var col = getColumnMapping(sheet);
+  var row = sheet.getRange(lastRow, 1, 1, COLUMN_COUNT).getValues()[0];
 
   var g = function(name) {
     var idx = col[name];
@@ -110,7 +121,7 @@ function getLastState() {
 
   if (isNaN(scoreUs) || isNaN(scoreThem)) {
     // 最後の有効なスコアを探す
-    var allData = sheet.getRange(2, 1, lastRow - 1, 20).getValues();
+    var allData = sheet.getRange(2, 1, lastRow - 1, COLUMN_COUNT).getValues();
     for (var i = allData.length - 1; i >= 0; i--) {
       var r = allData[i];
       var su = parseInt(r[col['score_us']]);
@@ -140,26 +151,22 @@ function getLastState() {
 }
 
 function getOpponentHistory() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('生データ');
+  var sheet = getDataSheet();
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return [];
 
-  // ヘッダーからopponent列を特定
-  var headers = sheet.getRange(1, 1, 1, 20).getValues()[0];
-  var oppCol = -1;
-  headers.forEach(function(h, i) { if(h.toString().trim() === 'opponent') oppCol = i + 1; });
-  if (oppCol < 0) return [];
+  var col = getColumnMapping(sheet);
+  var oppCol = col['opponent'];
+  if (oppCol === undefined) return [];
 
-  var data = sheet.getRange(2, oppCol, lastRow-1, 1).getValues();
+  var data = sheet.getRange(2, oppCol + 1, lastRow-1, 1).getValues();
   var u = {};
   data.forEach(function(r){ if(r[0]&&r[0].toString().trim()) u[r[0].toString().trim()]=true; });
   return Object.keys(u).sort();
 }
 
 function getSettings() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('設定');
+  var sheet = getSettingsSheet();
   if (!sheet) return { players:[], attackTypes:[], resultDetails:[] };
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return { players:[], attackTypes:[], resultDetails:[] };
@@ -197,16 +204,12 @@ function getNotionPageId() {
 function updateNotion() {
   var NOTION_TOKEN = getNotionToken();
   var NOTION_PAGE_ID = getNotionPageId();
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('生データ');
+  var sheet = getDataSheet();
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return;
 
-  var headers = sheet.getRange(1, 1, 1, 20).getValues()[0];
-  var col = {};
-  headers.forEach(function(h, i) { col[h.toString().trim()] = i; });
-
-  var data = sheet.getRange(2, 1, lastRow - 1, 20).getValues();
+  var col = getColumnMapping(sheet);
+  var data = sheet.getRange(2, 1, lastRow - 1, COLUMN_COUNT).getValues();
 
   var matches = {};
   data.forEach(function(row) {
