@@ -953,12 +953,6 @@ function insertRally(afterRallyKey, rallyData) {
 function recalcDerivedValues(setNumber) {
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(10000);
-  } catch (e) {
-    return { success: false, error: 'ロック取得失敗: ' + e.message };
-  }
-  
-  try {
     return _recalcDerivedValuesInternal(setNumber);
   } catch (e) {
     return { success: false, error: e.message };
@@ -968,6 +962,23 @@ function recalcDerivedValues(setNumber) {
 }
 
 // === AI提案系関数（フェーズ4: 確定系） ===
+
+/**
+ * 動画リンク生成
+ * @param {string} driveFileId - DriveファイルID
+ * @param {number} startSec - 開始秒数
+ * @return {string} 動画リンク
+ */
+function getVideoLink(driveFileId, startSec) {
+  if (!driveFileId) {
+    return '';
+  }
+  var link = 'https://drive.google.com/file/d/' + driveFileId + '/view';
+  if (startSec !== undefined && startSec !== null && startSec > 0) {
+    link += '?t=' + Math.floor(startSec);
+  }
+  return link;
+}
 
 /**
  * 生データへ転記
