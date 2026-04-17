@@ -748,6 +748,8 @@ def main():
     parser.add_argument('--rotation', type=int, default=1, help='最初のローテーション（1-6）')
     parser.add_argument('--drive-file-id', required=True, help='Google Drive動画ファイルID')
     parser.add_argument('--game', type=int, default=1, help='ゲーム番号（デフォルト1）')
+    parser.add_argument('--start-segment', type=int, default=None, help='開始区間番号（デフォルト: 最初から）')
+    parser.add_argument('--end-segment', type=int, default=None, help='終了区間番号（デフォルト: 最後まで）')
     args = parser.parse_args()
 
     # 定数
@@ -801,6 +803,14 @@ def main():
         segments = split_segments(encoded_path, str(temp_dir))
         for seg in segments:
             temp_files.append(seg['path'])
+
+        # 区間範囲を適用
+        if args.start_segment is not None or args.end_segment is not None:
+            start_idx = args.start_segment if args.start_segment is not None else 0
+            end_idx = args.end_segment if args.end_segment is not None else len(segments)
+            print(f'\n区間範囲指定: {start_idx} 〜 {end_idx - 1}')
+            segments = segments[start_idx:end_idx]
+            print(f'対象区間数: {len(segments)}')
 
         # Step 4: Gemini API分析
         print('\n--- Step 4: Gemini API分析 ---')
