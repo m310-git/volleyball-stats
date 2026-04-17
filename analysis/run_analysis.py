@@ -355,7 +355,14 @@ def call_gemini(client, model_name, video_file, system_prompt, user_prompt, max_
         except Exception as e:
             err_str = str(e)
             print(f'  APIエラー: {err_str[:100]}...')
-            
+
+            # 503エラー（サービス過負荷）：長時間待機
+            if '503' in err_str or 'UNAVAILABLE' in err_str:
+                wait = 60 + (attempt * 30)  # 60秒, 90秒, 120秒, 150秒, 180秒
+                print(f'  ⏸️ サービス過負荷: {wait}秒待機...')
+                time.sleep(wait)
+                continue
+
             # 429エラー：APIの指定した秒数待機
             if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
                 retry_delay = extract_retry_delay(err_str)
@@ -364,7 +371,7 @@ def call_gemini(client, model_name, video_file, system_prompt, user_prompt, max_
                     print(f'  ⏸️ Rate Limit: {wait}秒待機...')
                     time.sleep(wait)
                     continue
-            
+
             if attempt < max_retries - 1:
                 wait = min(2 ** attempt, 60)
                 print(f'  {wait}秒待機...')
