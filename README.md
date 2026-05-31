@@ -2,6 +2,18 @@
 
 バレーボールの試合スタッツ記録・分析ツール
 
+## 技術スタック
+
+- **Google Apps Script** - 入力UI・自動化
+- **Python** - データ分析
+  - `google-genai` - Gemini API
+  - `gspread` - Google Sheets操作
+  - `notion-client` - Notion API
+  - `japanize-matplotlib` - 日本語対応グラフ
+- **Google Sheets** - データストレージ
+- **Notion API** - レポート自動更新
+- **Google Colab** - 分析環境
+
 ## 構成
 
 - `gas/` - Google Apps Script（入力UI）
